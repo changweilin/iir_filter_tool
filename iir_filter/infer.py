@@ -4,9 +4,26 @@
 # %% [code]
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import freqz, butter, cheby1, cheby2, ellip, bessel, tf2zpk, group_delay, find_peaks
+from scipy.signal import freqz, butter, cheby1, cheby2, ellip, bessel, tf2zpk, tf2sos, sos2tf, group_delay, find_peaks
 
+# ===============================
+# 2. 高階 IIR 轉換成 biquad 串聯的函式
+# ===============================
+def convert_to_biquads(b, a):
+    """
+    將高階 IIR 濾波器係數轉換成 biquad (SOS) 串聯表示
+    """
+    from scipy.signal import tf2sos
+    sos = tf2sos(b, a)
+    return sos
 
+def convert_from_biquads(sos):
+    """
+    將 biquad (SOS) 串聯表示轉換回濾波器係數 (b, a)
+    """
+    from scipy.signal import sos2tf
+    b, a = sos2tf(sos)
+    return b, a
 
 # --- 濾波器分析與推測函式 ---
 def analyze_iir(b, a, fs, worN=8000):
@@ -19,14 +36,16 @@ def analyze_iir(b, a, fs, worN=8000):
     idx_peak, idx_valley = np.argmax(mag), np.argmin(mag)
     f_peak, f_valley = f[idx_peak], f[idx_valley]
 
+    # 依 mag0 與 magNy 差值判斷低通/高通
+    delta = mag0 - magNy
     # 判斷類型與 f0, Q
-    if idx_peak == 0:
+    if delta > 3:
         ftype = 'lowpass'
         thr = mag0 - 3
         idx_cut = np.where(mag <= thr)[0][0]
         f0, Q = f[idx_cut], None
 
-    elif idx_peak == len(f)-1:
+    elif delta < -3:
         ftype = 'highpass'
         thr = magNy - 3
         idx_cut = np.where(mag >= thr)[0][0]
