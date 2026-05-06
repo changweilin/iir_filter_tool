@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   test:
-    name: Python tests
+    name: Python and web tests
     runs-on: ubuntu-latest
 
     steps:
@@ -33,3 +33,49 @@ jobs:
 
       - name: Run tests
         run: python -m unittest discover -s tests
+
+      - name: Smoke test Flask web app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python web_app.py > flask-smoke.log 2>&1 &
+          SERVER_PID=$!
+
+          cleanup() {
+            kill "$SERVER_PID" 2>/dev/null || true
+          }
+          show_logs() {
+            echo "::group::Flask smoke log"
+            cat flask-smoke.log || true
+            echo "::endgroup::"
+          }
+          trap cleanup EXIT
+          trap show_logs ERR
+
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error http://127.0.0.1:5000/ > /tmp/iir-home.html; then
+              break
+            fi
+            sleep 1
+          done
+
+          test -s /tmp/iir-home.html
+          grep -q "Run Design" /tmp/iir-home.html
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d '{"ftype":"bandpass","method":"biquad","fs":48000,"f0":1000,"Q":5,"order":2}' \
+            http://127.0.0.1:5000/api/design > /tmp/iir-design.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/iir-design.json").read_text())
+          assert len(data["b"]) == 3
+          assert len(data["a"]) == 3
+          assert len(data["response"]["frequency_hz"]) == 1024
+          assert len(data["response"]["magnitude_db"]) == 1024
+          assert data["inferred"]["ftype"] == "bandpass"
+          PY
