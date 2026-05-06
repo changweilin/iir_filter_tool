@@ -1,219 +1,239 @@
-# %% [markdown]
-# 根據推測參數重建濾波器或反向推測濾波器設計參數，並交互驗證
+import warnings
 
-# %% [code]
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import freqz, butter, cheby1, cheby2, ellip, bessel, tf2zpk, tf2sos, sos2tf, group_delay, find_peaks
+from scipy.signal import freqz, group_delay, sos2tf, tf2sos, tf2zpk
 
-# ===============================
-# 2. 高階 IIR 轉換成 biquad 串聯的函式
-# ===============================
+
 def convert_to_biquads(b, a):
-    """
-    將高階 IIR 濾波器係數轉換成 biquad (SOS) 串聯表示
-    """
-    from scipy.signal import tf2sos
-    sos = tf2sos(b, a)
-    return sos
+    """Convert transfer-function coefficients to second-order sections."""
+    return tf2sos(b, a)
+
 
 def convert_from_biquads(sos):
-    """
-    將 biquad (SOS) 串聯表示轉換回濾波器係數 (b, a)
-    """
-    from scipy.signal import sos2tf
-    b, a = sos2tf(sos)
-    return b, a
+    """Convert second-order sections to transfer-function coefficients."""
+    return sos2tf(sos)
 
-# --- 濾波器分析與推測函式 ---
+
+def _db_magnitude(response):
+    magnitude = np.maximum(np.abs(response), np.finfo(float).tiny)
+    return 20 * np.log10(magnitude)
+
+
+def _finite_values(values):
+    values = np.asarray(values, dtype=float)
+    return values[np.isfinite(values)]
+
+
+def _safe_min(values):
+    values = _finite_values(values)
+    return float(np.min(values)) if values.size else None
+
+
+def _safe_max(values):
+    values = _finite_values(values)
+    return float(np.max(values)) if values.size else None
+
+
+def _safe_range(values):
+    values = _finite_values(values)
+    return float(np.max(values) - np.min(values)) if values.size else None
+
+
+def _attenuation(reference_values, rejected_values):
+    reference_min = _safe_min(reference_values)
+    rejected_max = _safe_max(rejected_values)
+    if reference_min is None or rejected_max is None:
+        return None
+    return float(reference_min - rejected_max)
+
+
+def _bandwidth_from_q(f, f0, q):
+    if f0 is None:
+        return None
+    if q is not None and q > 0:
+        return f0 / q
+    if f.size < 2:
+        return None
+    span = f[-1] - f[0]
+    return span * 0.1 if span > 0 else None
+
+
+def _estimate_q(f0, f1, f2):
+    if f0 is None or f1 is None or f2 is None or f2 <= f1:
+        return None
+    return float(f0 / (f2 - f1))
+
+
 def analyze_iir(b, a, fs, worN=8000):
     """
-    分析任意階 IIR 濾波器，回傳 f, mag, ftype, f0, Q
+    Analyze a digital IIR response and estimate ftype, f0, and Q.
+
+    The estimates are intentionally best-effort. Missing threshold crossings
+    produce partial metadata instead of raising.
     """
     f, h = freqz(b, a, worN=worN, fs=fs)
-    mag = 20 * np.log10(np.abs(h))
-    mag0, magNy = mag[0], mag[-1]
-    idx_peak, idx_valley = np.argmax(mag), np.argmin(mag)
-    f_peak, f_valley = f[idx_peak], f[idx_valley]
+    mag = _db_magnitude(h)
+    if f.size == 0:
+        return f, mag, "unknown", None, None
 
-    # 依 mag0 與 magNy 差值判斷低通/高通
-    delta = mag0 - magNy
-    # 判斷類型與 f0, Q
+    mag0 = mag[0]
+    mag_nyquist = mag[-1]
+    idx_peak = int(np.argmax(mag))
+    idx_valley = int(np.argmin(mag))
+    delta = mag0 - mag_nyquist
+
+    if (
+        0 < idx_peak < f.size - 1
+        and mag[idx_peak] - max(mag0, mag_nyquist) > 3
+    ):
+        f0 = float(f[idx_peak])
+        threshold = mag[idx_peak] - 3
+        left = np.flatnonzero(mag[:idx_peak] <= threshold)
+        right = np.flatnonzero(mag[idx_peak:] <= threshold)
+        f1 = float(f[left[-1]]) if left.size else None
+        f2 = float(f[idx_peak + right[0]]) if right.size else None
+        return f, mag, "bandpass", f0, _estimate_q(f0, f1, f2)
+
+    if (
+        0 < idx_valley < f.size - 1
+        and min(mag0, mag_nyquist) - mag[idx_valley] > 3
+    ):
+        f0 = float(f[idx_valley])
+        threshold = mag[idx_valley] + 3
+        left = np.flatnonzero(mag[:idx_valley] >= threshold)
+        right = np.flatnonzero(mag[idx_valley:] >= threshold)
+        f1 = float(f[left[-1]]) if left.size else None
+        f2 = float(f[idx_valley + right[0]]) if right.size else None
+        return f, mag, "notch", f0, _estimate_q(f0, f1, f2)
+
     if delta > 3:
-        ftype = 'lowpass'
-        thr = mag0 - 3
-        idx_cut = np.where(mag <= thr)[0][0]
-        f0, Q = f[idx_cut], None
+        threshold = mag0 - 3
+        crossings = np.flatnonzero(mag <= threshold)
+        f0 = float(f[crossings[0]]) if crossings.size else None
+        return f, mag, "lowpass", f0, None
 
-    elif delta < -3:
-        ftype = 'highpass'
-        thr = magNy - 3
-        idx_cut = np.where(mag >= thr)[0][0]
-        f0, Q = f[idx_cut], None
+    if delta < -3:
+        threshold = mag_nyquist - 3
+        crossings = np.flatnonzero(mag >= threshold)
+        f0 = float(f[crossings[0]]) if crossings.size else None
+        return f, mag, "highpass", f0, None
 
-    elif 0 < idx_peak < len(f)-1 and mag[idx_peak] > mag0 and mag[idx_peak] > magNy:
-        ftype = 'bandpass'
-        f0 = f_peak
-        thr = mag[idx_peak] - 3
-        idx1 = np.where(mag[:idx_peak] <= thr)[0][-1]
-        idx2 = idx_peak + np.where(mag[idx_peak:] <= thr)[0][0]
-        f1, f2 = f[idx1], f[idx2]
-        Q = f0 / (f2 - f1)
+    return f, mag, "unknown", None, None
 
-    elif 0 < idx_valley < len(f)-1 and mag[idx_valley] < mag0 and mag[idx_valley] < magNy:
-        ftype = 'notch'
-        f0 = f_valley
-        thr = mag[idx_valley] + 3
-        idx1 = np.where(mag[:idx_valley] >= thr)[0][-1]
-        idx2 = idx_valley + np.where(mag[idx_valley:] >= thr)[0][0]
-        f1, f2 = f[idx1], f[idx2]
-        Q = f0 / (f2 - f1)
 
+def _estimate_ripple_and_stopband(f, mag, ftype, f0, q):
+    if f0 is None:
+        return None, None
+
+    if ftype == "lowpass":
+        passband = mag[f <= f0]
+        stopband = mag[f >= f0 * 1.2]
+        return _safe_range(passband), _attenuation(passband, stopband)
+
+    if ftype == "highpass":
+        passband = mag[f >= f0]
+        stopband = mag[f <= f0 * 0.8]
+        return _safe_range(passband), _attenuation(passband, stopband)
+
+    bandwidth = _bandwidth_from_q(f, f0, q)
+    if bandwidth is None:
+        return None, None
+
+    low = f0 - bandwidth / 2
+    high = f0 + bandwidth / 2
+    band_mask = (f >= low) & (f <= high)
+
+    if ftype == "bandpass":
+        passband = mag[band_mask]
+        stopband = mag[~band_mask]
+        return _safe_range(passband), _attenuation(passband, stopband)
+
+    if ftype == "notch":
+        passband = mag[~band_mask]
+        stopband = mag[band_mask]
+        return _safe_range(passband), _attenuation(passband, stopband)
+
+    return None, None
+
+
+def _estimate_group_delay_deviation(b, a, fs, f, ftype, f0, q):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            w_gd, gd = group_delay((b, a), fs=fs)
+        except Exception:
+            return None
+
+    if ftype == "lowpass" and f0 is not None:
+        gd_band = gd[w_gd <= f0]
+    elif ftype == "highpass" and f0 is not None:
+        gd_band = gd[w_gd >= f0]
+    elif ftype in ("bandpass", "notch") and f0 is not None:
+        bandwidth = _bandwidth_from_q(f, f0, q)
+        if bandwidth is None:
+            gd_band = gd
+        else:
+            low = f0 - bandwidth / 2
+            high = f0 + bandwidth / 2
+            gd_band = gd[(w_gd >= low) & (w_gd <= high)]
     else:
-        ftype, f0, Q = 'unknown', None, None
+        gd_band = gd
 
-    return f, mag, ftype, f0, Q
+    return _safe_range(gd_band)
+
+
+def _infer_method(rp, rs, gd_dev):
+    if rp is None or gd_dev is None:
+        return "unknown"
+    if rs is not None and (not np.isfinite(rs) or rs > 300):
+        return "unknown"
+    if rp < 0.1:
+        return "bessel" if gd_dev < 1 else "butterworth"
+    if rs is not None and rs < 1:
+        return "cheby1"
+    if rs is not None and rp < 0.1:
+        return "cheby2"
+    if rs is not None:
+        return "elliptic"
+    return "unknown"
 
 
 def infer_iir_params(b, a, fs):
     """
-    自動從 b, a 推測：
-      - 濾波器類型 ftype
-      - 截止／中心頻率 f0
-      - 品質因數 Q (若有)
-      - 通帶波紋 rp (dB)
-      - 阻帶衰減 rs (dB)
-      - 群延遲變化量 gd_dev (samples)
-      - 極點 poles, 零點 zeros
-      - 最可能的設計方法 method
+    Infer best-effort descriptive parameters from IIR coefficients.
+
+    The return value is analysis metadata. It may be designable, but exact
+    round-trip reconstruction is not guaranteed.
     """
-    # 1. 先分析 ftype, f0, Q
-    f, mag, ftype, f0, Q = analyze_iir(b, a, fs)
+    b = np.asarray(b, dtype=float)
+    a = np.asarray(a, dtype=float)
+    fs = float(fs)
 
-    # 2. 計算 rp, rs
-    if ftype == 'lowpass':
-        #find pass band
-        pb = mag[f <= f0]
-        pb_peak, _ = find_peaks(pb)
-        if pb_peak.size > 0 and pb_peak[-1] > 0:
-            pb = pb[:pb_peak[-1]+1]
-        rp = np.max(pb) - np.min(pb)
+    f, mag, ftype, f0, q = analyze_iir(b, a, fs)
+    rp, rs = _estimate_ripple_and_stopband(f, mag, ftype, f0, q)
+    gd_dev = _estimate_group_delay_deviation(b, a, fs, f, ftype, f0, q)
 
-        #find stop band
-        sb = mag[f >= f0 * 1.2]
-        sb_peak, _ = find_peaks(-sb)
-        if sb_peak.size > 0 and sb_peak[0] < sb.size - 1:
-            sb = sb[sb_peak[0]:]
-        rs = np.min(pb) - np.max(sb)
-    elif ftype == 'highpass':
-        #find pass band
-        pb = mag[f >= f0]
-        pb_peak, _ = find_peaks(pb)
-        if pb_peak.size > 0 and pb_peak[0] < pb.size - 1:
-            pb = pb[pb_peak[0]:]
-        rp = np.max(pb) - np.min(pb)
+    try:
+        zeros, poles, _ = tf2zpk(b, a)
+    except Exception:
+        zeros = np.array([])
+        poles = np.array([])
 
-        #find stop band
-        sb = mag[f <= f0 * 0.8]
-        sb_peak, _ = find_peaks(-sb)
-        if sb_peak.size > 0 and sb_peak[-1] > 0:
-            sb = sb[:sb_peak[-1]+1]
-        rs = np.min(pb) - np.max(sb)
-    elif ftype == 'bandpass':
-        #get band width
-        bw = f0 / Q if Q else (f[-1] - f[0]) * 0.1
-
-        #find pass band
-        pb = mag[(f >= f0 - bw/2) & (f <= f0 + bw/2)]
-        pb_peak, _ = find_peaks(pb)
-        if pb_peak.size > 1:
-            pb = pb[pb_peak[0]:pb_peak[-1]+1]
-            mag_fc = np.min(pb)
-        elif pb_peak.size == 1:
-            mag_fc = pb[pb_peak[0]]
-        else:
-            mag_fc = np.max(pb)
-        rp = np.max(pb) - mag_fc
-
-        #find stop band
-        sb1 = mag[(f < f0 - bw/2)]
-        sb2 = mag[(f > f0 + bw/2)]
-        sb1_peak, _ = find_peaks(-sb1)
-        if sb1_peak.size > 0 and sb1_peak[-1] < sb1.size-1:
-            sb1 = sb1[:sb1_peak[-1]+1]
-        sb2_peak, _ = find_peaks(-sb2)
-        if sb2_peak.size > 0 and sb2_peak[0] > 0:
-            sb2 = sb2[sb1_peak[0]:]
-        sb_max = max(np.max(sb1), np.max(sb2))
-        rs = mag_fc - sb_max
-    elif ftype == 'notch':
-        #get band width
-        bw = f0 / Q if Q else (f[-1] - f[0]) * 0.1
-
-        #find pass band
-        pb1 = mag[(f < f0 - bw/2)]
-        pb2 = mag[(f > f0 + bw/2)]
-        pb1_peak, _ = find_peaks(pb1)
-        if pb1_peak.size > 0 and pb1_peak[-1] < pb1.size-1:
-            pb1 = pb1[:pb1_peak[-1]+1]
-        pb2_peak, _ = find_peaks(pb2)
-        if pb2_peak.size > 0 and pb2_peak[0] > 0:
-            pb2 = pb2[pb1_peak[0]:]
-        pb_min = min(np.min(pb1), np.min(pb2))
-        pb_max = max(np.max(pb1), np.max(pb2))
-        rp = pb_max - pb_min
-
-        #find stop band
-        sb = mag[(f >= f0 - bw/2) & (f <= f0 + bw/2)]
-        sb_peak, _ = find_peaks(-sb)
-        if sb_peak.size > 1:
-            sb = sb[sb_peak[0]:sb_peak[-1]+1]
-            mag_fc = np.max(sb)
-        elif sb_peak.size == 1:
-            mag_fc = sb(sb_peak[0])
-        else:
-            mag_fc = np.min(sb)
-        rs = pb_min - mag_fc
-    else:
-        rp = rs = None
-
-    # 3. 群延遲平坦度
-    w_gd, gd = group_delay((b, a), fs=fs)
-    if ftype == 'lowpass':
-        gd_pb = gd[w_gd <= f0]
-    elif ftype == 'highpass':
-        gd_pb = gd[w_gd >= f0]
-    elif ftype in ['bandpass', 'notch']:
-        bw = f0 / Q if Q else (f[-1] - f[0]) * 0.1
-        mask = (w_gd >= f0 - bw/2) & (w_gd <= f0 + bw/2)
-        gd_pb = gd[mask]
-    else:
-        gd_pb = gd
-    gd_dev = gd_pb.max() - gd_pb.min()
-
-    # 4. 極零分佈
-    zeros, poles, _ = tf2zpk(b, a)
-
-    # 5. 啟發式判斷設計方法
-    method = 'unknown'
-    if rp is not None:
-        if rp < 0.1:
-            method = 'bessel' if gd_dev < 1 else 'butterworth'
-        elif rp >= 0.1 and rs is not None and rs < 1:
-            method = 'cheby1'
-        elif rs is not None and rs >= 1 and rp < 0.1:
-            method = 'cheby2'
-        elif rs is not None and rs >= 1 and rp >= 0.1:
-            method = 'elliptic'
+    method = _infer_method(rp, rs, gd_dev)
+    order = max(len(a) - 1, 0)
+    designable = ftype != "unknown" and f0 is not None and method != "unknown" and order > 0
 
     return {
-        'ftype':  ftype,
-        'f0':     f0,
-        'Q':      Q,
-        'rp':     rp,
-        'rs':     rs,
-        'gd_dev': gd_dev,
-        'poles':  poles,
-        'zeros':  zeros,
-        'method': method
+        "ftype": ftype,
+        "f0": f0,
+        "Q": q,
+        "order": order,
+        "fs": fs,
+        "rp": rp,
+        "rs": rs,
+        "gd_dev": gd_dev,
+        "poles": poles,
+        "zeros": zeros,
+        "method": method,
+        "designable": designable,
     }

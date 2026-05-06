@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IIR Filter Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">IIR Filter Tool</p>
+        <h1>設計、分析、反推濾波器</h1>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite">Ready</div>
+    </header>
+
+    <main class="shell">
+      <section class="panel controls-panel" aria-labelledby="design-heading">
+        <div class="section-title">
+          <h2 id="design-heading">設計參數</h2>
+          <button id="design-submit" class="primary-button" type="button">Run Design</button>
+        </div>
+
+        <form id="design-form" class="form-grid">
+          <label>
+            <span>Filter Type</span>
+            <select name="ftype">
+              <option value="bandpass">bandpass</option>
+              <option value="lowpass">lowpass</option>
+              <option value="highpass">highpass</option>
+              <option value="notch">notch</option>
+            </select>
+          </label>
+          <label>
+            <span>Method</span>
+            <select name="method">
+              <option value="biquad">biquad</option>
+              <option value="butterworth">butterworth</option>
+              <option value="cheby1">cheby1</option>
+              <option value="cheby2">cheby2</option>
+              <option value="elliptic">elliptic</option>
+              <option value="bessel">bessel</option>
+            </select>
+          </label>
+          <label>
+            <span>Sample Rate (Hz)</span>
+            <input name="fs" type="number" min="1" step="1" value="48000">
+          </label>
+          <label>
+            <span>Frequency f0 (Hz)</span>
+            <input name="f0" type="number" min="1" step="1" value="1000">
+          </label>
+          <label>
+            <span>Q</span>
+            <input name="Q" type="number" min="0.0001" step="0.1" value="5">
+          </label>
+          <label>
+            <span>Order</span>
+            <input name="order" type="number" min="1" step="1" value="2">
+          </label>
+          <label>
+            <span>Passband Ripple rp (dB)</span>
+            <input name="rp" type="number" min="0.0001" step="0.1" placeholder="cheby1 / elliptic">
+          </label>
+          <label>
+            <span>Stopband Attenuation rs (dB)</span>
+            <input name="rs" type="number" min="0.0001" step="1" placeholder="cheby2 / elliptic">
+          </label>
+        </form>
+      </section>
+
+      <section class="panel chart-panel" aria-labelledby="response-heading">
+        <div class="section-title">
+          <h2 id="response-heading">Magnitude Response</h2>
+          <span id="chart-meta" class="meta">0 points</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="response-chart" width="960" height="420" aria-label="Magnitude response chart"></canvas>
+        </div>
+      </section>
+
+      <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
+        <div class="section-title">
+          <h2 id="coefficients-heading">係數</h2>
+          <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
+        </div>
+        <div class="coeff-columns">
+          <div>
+            <h3>b</h3>
+            <ol id="b-list" class="coeff-list"></ol>
+          </div>
+          <div>
+            <h3>a</h3>
+            <ol id="a-list" class="coeff-list"></ol>
+          </div>
+        </div>
+        <pre id="coeff-json" class="json-block">{}</pre>
+      </section>
+
+      <section class="panel infer-panel" aria-labelledby="infer-heading">
+        <div class="section-title">
+          <h2 id="infer-heading">係數反推</h2>
+          <button id="infer-submit" class="primary-button" type="button">Run Infer</button>
+        </div>
+        <form id="infer-form" class="infer-grid">
+          <label>
+            <span>b coefficients</span>
+            <textarea name="b" rows="4">[0.01276221, 0, -0.01276221]</textarea>
+          </label>
+          <label>
+            <span>a coefficients</span>
+            <textarea name="a" rows="4">[1, -1.95676142, 0.97447558]</textarea>
+          </label>
+          <label>
+            <span>Sample Rate (Hz)</span>
+            <input name="fs" type="number" min="1" step="1" value="48000">
+          </label>
+        </form>
+      </section>
+
+      <section class="panel inferred-panel" aria-labelledby="inferred-heading">
+        <div class="section-title">
+          <h2 id="inferred-heading">反推結果</h2>
+          <button id="apply-inferred" class="ghost-button" type="button" disabled>Apply</button>
+        </div>
+        <dl id="inferred-summary" class="summary-list"></dl>
+        <pre id="inferred-json" class="json-block">{}</pre>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

@@ -1,55 +1,104 @@
-
 import numpy as np
-from scipy.signal import butter, cheby1, cheby2, ellip, bessel
+from scipy.signal import bessel, butter, cheby1, cheby2, ellip
 
-# --- 濾波器設計函式 ---
+
+_METHOD_ALIASES = {
+    "biquad": "biquad",
+    "butter": "butterworth",
+    "butterworth": "butterworth",
+    "cheby1": "cheby1",
+    "cheby2": "cheby2",
+    "ellip": "elliptic",
+    "elliptic": "elliptic",
+    "bessel": "bessel",
+}
+
+_FTYPE_ALIASES = {
+    "lowpass": "lowpass",
+    "highpass": "highpass",
+    "bandpass": "bandpass",
+    "notch": "notch",
+    "bandstop": "notch",
+}
+
+
+def _require_key(info, key):
+    if key not in info:
+        raise ValueError(f"Missing required filter parameter: {key}")
+    return info[key]
+
+
+def _as_positive_float(value, name):
+    value = float(value)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive finite value")
+    return value
+
+
+def _normalize_ftype(ftype):
+    normalized = _FTYPE_ALIASES.get(str(ftype).lower())
+    if normalized is None:
+        raise ValueError(f"Unsupported filter type: {ftype}")
+    return normalized
+
+
+def _normalize_method(method):
+    normalized = _METHOD_ALIASES.get(str(method).lower())
+    if normalized is None:
+        raise ValueError(f"Unsupported design method: {method}")
+    return normalized
+
+
+def _band_edges(f0, q, nyq):
+    bandwidth = f0 / q if q is not None else f0 * 0.1
+    low = max((f0 - bandwidth / 2.0) / nyq, 1e-6)
+    high = min((f0 + bandwidth / 2.0) / nyq, 0.999)
+    if low >= high:
+        raise ValueError("Computed band edges are invalid; check f0, Q, and fs")
+    return [low, high]
+
+
 def design_iir(info, fs=None):
     """
-    設計 IIR 濾波器，支援多種方法：
-      - order=2 且 method='biquad'：RBJ Biquad
-      - 其他：Butterworth, Cheby1, Cheby2, Elliptic, Bessel
-    參數：
-      info: dict 包含以下鍵值
-        'ftype': 'lowpass','highpass','bandpass','notch'
-        'f0'   : 截止/中心頻率 (Hz)
-        'Q'    : 品質因數 (只於 biquad 有效，可為 None)
-        'order': 階數
-        'method': 'biquad','butterworth','cheby1','cheby2','elliptic','bessel'
-        'rp'   : 通帶最大波紋 (dB)，Cheby1/Ellip 用
-        'rs'   : 阻帶最小衰減 (dB)，Cheby2/Ellip 用
-        'fs'   : 取樣率 (Hz，可選)
-      fs  : 外部提供取樣率 (Hz)，優先於 info['fs']
-    回傳：
-      b, a : 濾波器係數
+    Design an IIR filter from a small parameter dictionary.
+
+    Supported public filter types are lowpass, highpass, bandpass, and notch.
+    The SciPy-backed design path maps notch to SciPy's bandstop btype.
     """
-    order = info['order']
-    ftype = info['ftype']
-    f0 = info['f0']
-    Q = info.get('Q', None)
-    method = info['method']
-    rp = info.get('rp', None)
-    rs = info.get('rs', None)
+    order = int(_require_key(info, "order"))
+    ftype = _normalize_ftype(_require_key(info, "ftype"))
+    f0 = _as_positive_float(_require_key(info, "f0"), "f0")
+    q = info.get("Q")
+    q = _as_positive_float(q, "Q") if q is not None else None
+    method = _normalize_method(_require_key(info, "method"))
+    rp = info.get("rp")
+    rs = info.get("rs")
 
-    # 取樣率優先採用函式參數，否則從 info 取值，預設為 48000
-    fs = fs or info.get('fs', 48000)
+    fs = _as_positive_float(fs if fs is not None else info.get("fs", 48000), "fs")
     nyq = fs / 2.0
-    m = method.lower()
+    if f0 >= nyq:
+        raise ValueError("f0 must be below the Nyquist frequency")
 
-    # RBJ Biquad (僅限二階)
-    if order == 2 and m == 'biquad':
+    if method == "biquad":
+        if order != 2:
+            raise ValueError("RBJ biquad design requires order=2")
+        if q is None:
+            raise ValueError("Q is required for RBJ biquad design")
+
         w0 = 2 * np.pi * f0 / fs
-        alpha = np.sin(w0) / (2 * Q)
+        alpha = np.sin(w0) / (2 * q)
         cosp = np.cos(w0)
-        if ftype == 'lowpass':
+        if ftype == "lowpass":
             b0, b1, b2 = (1 - cosp) / 2, 1 - cosp, (1 - cosp) / 2
-        elif ftype == 'highpass':
+        elif ftype == "highpass":
             b0, b1, b2 = (1 + cosp) / 2, -(1 + cosp), (1 + cosp) / 2
-        elif ftype == 'bandpass':
+        elif ftype == "bandpass":
             b0, b1, b2 = alpha, 0, -alpha
-        elif ftype == 'notch':
+        elif ftype == "notch":
             b0, b1, b2 = 1, -2 * cosp, 1
         else:
-            raise ValueError(f"不支援的 ftype: {ftype}")
+            raise ValueError(f"Unsupported biquad filter type: {ftype}")
+
         a0 = 1 + alpha
         a1 = -2 * cosp
         a2 = 1 - alpha
@@ -57,25 +106,28 @@ def design_iir(info, fs=None):
         a = np.array([1, a1 / a0, a2 / a0])
         return b, a
 
-    # SciPy IIR 設計
-    if ftype in ['lowpass', 'highpass']:
-        Wn = f0 / nyq
+    if ftype in ("lowpass", "highpass"):
+        wn = f0 / nyq
+        scipy_btype = ftype
     else:
-        BW = (f0 / Q) if (Q and m in ['cheby1', 'cheby2', 'elliptic']) else (f0 * 0.1)
-        f1 = max((f0 - BW / 2) / nyq, 1e-6)
-        f2 = min((f0 + BW / 2) / nyq, 0.999)
-        Wn = [f1, f2]
+        wn = _band_edges(f0, q, nyq)
+        scipy_btype = "bandstop" if ftype == "notch" else "bandpass"
 
-    if m in ['butterworth', 'butter']:
-        b, a = butter(order, Wn, btype=ftype, analog=False)
-    elif m == 'cheby1':
-        b, a = cheby1(order, rp, Wn, btype=ftype, analog=False)
-    elif m == 'cheby2':
-        b, a = cheby2(order, rs, Wn, btype=ftype, analog=False)
-    elif m in ['elliptic', 'ellip']:
-        b, a = ellip(order, rp, rs, Wn, btype=ftype, analog=False)
-    elif m == 'bessel':
-        b, a = bessel(order, Wn, btype=ftype, analog=False)
-    else:
-        raise ValueError(f"不支援的設計方法：{method}")
-    return b, a
+    if method == "butterworth":
+        return butter(order, wn, btype=scipy_btype, analog=False)
+    if method == "cheby1":
+        if rp is None:
+            raise ValueError("rp is required for cheby1 design")
+        return cheby1(order, rp, wn, btype=scipy_btype, analog=False)
+    if method == "cheby2":
+        if rs is None:
+            raise ValueError("rs is required for cheby2 design")
+        return cheby2(order, rs, wn, btype=scipy_btype, analog=False)
+    if method == "elliptic":
+        if rp is None or rs is None:
+            raise ValueError("rp and rs are required for elliptic design")
+        return ellip(order, rp, rs, wn, btype=scipy_btype, analog=False)
+    if method == "bessel":
+        return bessel(order, wn, btype=scipy_btype, analog=False)
+
+    raise ValueError(f"Unsupported design method: {method}")

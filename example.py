@@ -1,40 +1,43 @@
 from iir_filter import design_iir, infer_iir_params, plot_response
 
-params = {
-        'ftype': 'bandpass',
-        'f0': 1000,       # Hz，中心頻率
-        'Q': 5,           # 僅 biquad 用
-        'order': 2,
-        'method': 'biquad',
-        'rp': None,
-        'rs': None
-}
-fs = 48000  # 取樣率
 
-b, a = design_iir(params, fs)
-
-# --- 列印設計與推論結果 ---
-print("\n=== 設計輸入參數 ===")
-for k, v in params.items():
-    print(f"{k}: {v}")
-
-print("\n=== 設計得到的濾波器係數 ===")
-print("b:", b)
-print("a:", a)
-
-plot_response(b, a, fs=48000, title="原始設計")
-
-# 推論回設計參數
-inferred = infer_iir_params(b, a, fs)
-b2, a2 = design_iir(inferred)
-
-plot_response(b2, a2, fs=48000, title="反推重建")
-
-print("\n=== 推論出的參數 ===")
-for k, v in inferred.items():
-    print(f"{k}: {v}")
+def print_params(title, params):
+    print(f"\n=== {title} ===")
+    for key, value in params.items():
+        print(f"{key}: {value}")
 
 
-print("\n=== 推論出的參數反推的濾波器係數 ===")
-print("b2:", b2)
-print("a2:", a2)
+def main():
+    fs = 48000
+    params = {
+        "ftype": "bandpass",
+        "f0": 1000,
+        "Q": 5,
+        "order": 2,
+        "method": "biquad",
+        "rp": None,
+        "rs": None,
+    }
+
+    b, a = design_iir(params, fs)
+    print_params("Input design parameters", params)
+    print("\n=== Designed coefficients ===")
+    print("b:", b)
+    print("a:", a)
+    plot_response(b, a, fs=fs, title="Original design")
+
+    inferred = infer_iir_params(b, a, fs)
+    print_params("Inferred best-effort parameters", inferred)
+
+    if inferred.get("designable"):
+        b2, a2 = design_iir(inferred, fs=fs)
+        print("\n=== Redesigned coefficients from inferred parameters ===")
+        print("b2:", b2)
+        print("a2:", a2)
+        plot_response(b2, a2, fs=fs, title="Best-effort redesign")
+    else:
+        print("\nInferred parameters are analysis-only and are not designable.")
+
+
+if __name__ == "__main__":
+    main()
