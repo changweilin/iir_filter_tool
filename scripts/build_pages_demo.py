@@ -11,7 +11,7 @@ from scipy.signal import freqz
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from iir_filter import design_iir, infer_iir_params
+from iir_filter import design_iir
 
 
 RESPONSE_POINTS = 1024
@@ -91,7 +91,6 @@ def _prepare_output_dir(output_path):
 def _build_case(case):
     params = case["params"].copy()
     b, a = design_iir(params, fs=params["fs"])
-    inferred = infer_iir_params(b, a, params["fs"])
 
     return {
         "id": case["id"],
@@ -101,7 +100,6 @@ def _build_case(case):
         "b": _json_safe(b),
         "a": _json_safe(a),
         "response": _frequency_response(b, a, params["fs"]),
-        "inferred": _json_safe(inferred),
     }
 
 
@@ -244,20 +242,20 @@ def _render_html(cases):
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
           <h2 id="infer-heading">Coefficient Inference</h2>
-          <button id="infer-submit" class="primary-button" type="button">Show Inferred</button>
+          <button id="infer-submit" class="primary-button" type="button">Run Infer</button>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
             <span>b coefficients</span>
-            <textarea name="b" rows="4" readonly></textarea>
+            <textarea name="b" rows="4">[0.01276221, 0, -0.01276221]</textarea>
           </label>
           <label>
             <span>a coefficients</span>
-            <textarea name="a" rows="4" readonly></textarea>
+            <textarea name="a" rows="4">[1, -1.95676142, 0.97447558]</textarea>
           </label>
           <label>
             <span>Sample Rate (Hz)</span>
-            <input name="fs" readonly>
+            <input name="fs" type="number" min="1" step="1" value="48000">
           </label>
         </form>
       </section>
@@ -265,10 +263,19 @@ def _render_html(cases):
       <section class="panel inferred-panel" aria-labelledby="inferred-heading">
         <div class="section-title">
           <h2 id="inferred-heading">Inferred Result</h2>
-          <button id="apply-inferred" class="ghost-button" type="button">Apply</button>
         </div>
         <dl id="inferred-summary" class="summary-list"></dl>
         <pre id="inferred-json" class="json-block">{{}}</pre>
+      </section>
+
+      <section class="panel inference-response-panel" aria-labelledby="inference-response-heading">
+        <div class="section-title">
+          <h2 id="inference-response-heading">Inference Response</h2>
+          <span id="inference-chart-meta" class="meta">0 points</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="inference-response-chart" width="960" height="420" aria-label="Inference response chart"></canvas>
+        </div>
       </section>
     </main>
 

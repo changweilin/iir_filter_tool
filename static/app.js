@@ -1,15 +1,21 @@
 const state = {
-  coefficients: null,
-  inferred: null,
-  response: null,
+  design: {
+    coefficients: null,
+    response: null,
+  },
+  inference: {
+    inferred: null,
+    response: null,
+  },
 };
 
 const statusEl = document.querySelector("#status");
-const chart = document.querySelector("#response-chart");
-const chartMeta = document.querySelector("#chart-meta");
+const designChart = document.querySelector("#response-chart");
+const designChartMeta = document.querySelector("#chart-meta");
+const inferenceChart = document.querySelector("#inference-response-chart");
+const inferenceChartMeta = document.querySelector("#inference-chart-meta");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
-const applyInferredButton = document.querySelector("#apply-inferred");
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
@@ -98,38 +104,41 @@ function renderSummary(inferred) {
   });
 }
 
-function renderResult(data) {
+function renderDesignResult(data) {
   if (data.b && data.a) {
-    state.coefficients = { b: data.b, a: data.a };
+    state.design.coefficients = { b: data.b, a: data.a };
     renderList("#b-list", data.b);
     renderList("#a-list", data.a);
-    document.querySelector("#coeff-json").textContent = JSON.stringify(state.coefficients, null, 2);
-    inferForm.elements.b.value = JSON.stringify(data.b);
-    inferForm.elements.a.value = JSON.stringify(data.a);
-    inferForm.elements.fs.value = designForm.elements.fs.value;
-  }
-
-  if (data.inferred) {
-    state.inferred = data.inferred;
-    renderSummary(data.inferred);
-    document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
-    applyInferredButton.disabled = !data.inferred.designable;
+    document.querySelector("#coeff-json").textContent = JSON.stringify(state.design.coefficients, null, 2);
   }
 
   if (data.response) {
-    state.response = data.response;
-    drawChart(data.response);
+    state.design.response = data.response;
+    drawChart(designChart, designChartMeta, data.response);
   }
 }
 
-function drawChart(response) {
-  const frequencies = response.frequency_hz || [];
-  const magnitudes = response.magnitude_db || [];
-  const ctx = chart.getContext("2d");
+function renderInferenceResult(data) {
+  if (data.inferred) {
+    state.inference.inferred = data.inferred;
+    renderSummary(data.inferred);
+    document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+  }
+
+  if (data.response) {
+    state.inference.response = data.response;
+    drawChart(inferenceChart, inferenceChartMeta, data.response);
+  }
+}
+
+function drawChart(canvas, metaEl, response) {
+  const frequencies = response?.frequency_hz || [];
+  const magnitudes = response?.magnitude_db || [];
+  const ctx = canvas.getContext("2d");
   const pixelRatio = window.devicePixelRatio || 1;
-  const rect = chart.getBoundingClientRect();
-  chart.width = Math.max(320, Math.floor(rect.width * pixelRatio));
-  chart.height = Math.max(260, Math.floor(rect.height * pixelRatio));
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(320, Math.floor(rect.width * pixelRatio));
+  canvas.height = Math.max(260, Math.floor(rect.height * pixelRatio));
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
   const width = rect.width;
@@ -139,7 +148,7 @@ function drawChart(response) {
   ctx.fillRect(0, 0, width, height);
 
   if (!frequencies.length || !magnitudes.length) {
-    chartMeta.textContent = "0 points";
+    metaEl.textContent = "0 points";
     return;
   }
 
@@ -206,13 +215,13 @@ function drawChart(response) {
   ctx.strokeStyle = "#006d77";
   ctx.lineWidth = 2;
   ctx.strokeRect(padding.left, padding.top, plotWidth, plotHeight);
-  chartMeta.textContent = `${frequencies.length} points`;
+  metaEl.textContent = `${frequencies.length} points`;
 }
 
 async function runDesign() {
   try {
     const data = await postJson("/api/design", designPayload());
-    renderResult(data);
+    renderDesignResult(data);
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -221,49 +230,29 @@ async function runDesign() {
 async function runInfer() {
   try {
     const data = await postJson("/api/infer", inferPayload());
-    renderResult(data);
+    renderInferenceResult(data);
   } catch (error) {
     setStatus(error.message, "error");
-  }
-}
-
-function applyInferred() {
-  const inferred = state.inferred;
-  if (!inferred || !inferred.designable) {
-    return;
-  }
-  ["ftype", "method", "fs", "f0", "order"].forEach((field) => {
-    if (designForm.elements[field] && inferred[field] != null) {
-      designForm.elements[field].value = inferred[field];
-    }
-  });
-
-  designForm.elements.Q.value = Number(inferred.Q) > 0 ? inferred.Q : "";
-  designForm.elements.rp.value = "";
-  designForm.elements.rs.value = "";
-
-  if (["cheby1", "elliptic"].includes(inferred.method) && Number(inferred.rp) > 0) {
-    designForm.elements.rp.value = inferred.rp;
-  }
-  if (["cheby2", "elliptic"].includes(inferred.method) && Number(inferred.rs) > 0) {
-    designForm.elements.rs.value = inferred.rs;
   }
 }
 
 document.querySelector("#design-submit").addEventListener("click", runDesign);
 document.querySelector("#infer-submit").addEventListener("click", runInfer);
 document.querySelector("#copy-json").addEventListener("click", async () => {
-  if (!state.coefficients) {
+  if (!state.design.coefficients) {
     return;
   }
-  await navigator.clipboard.writeText(JSON.stringify(state.coefficients, null, 2));
+  await navigator.clipboard.writeText(JSON.stringify(state.design.coefficients, null, 2));
   setStatus("Copied");
 });
-applyInferredButton.addEventListener("click", applyInferred);
 window.addEventListener("resize", () => {
-  if (state.response) {
-    drawChart(state.response);
+  if (state.design.response) {
+    drawChart(designChart, designChartMeta, state.design.response);
+  }
+  if (state.inference.response) {
+    drawChart(inferenceChart, inferenceChartMeta, state.inference.response);
   }
 });
 
+drawChart(inferenceChart, inferenceChartMeta, null);
 runDesign();

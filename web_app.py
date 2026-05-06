@@ -28,13 +28,11 @@ def create_app():
             params = _parse_design_payload(payload)
             fs = params["fs"]
             b, a = design_iir(params, fs=fs)
-            inferred = infer_iir_params(b, a, fs)
             return jsonify(
                 {
                     "b": _json_safe(b),
                     "a": _json_safe(a),
                     "response": _frequency_response(b, a, fs),
-                    "inferred": _json_safe(inferred),
                 }
             )
         except (TypeError, ValueError, KeyError) as exc:

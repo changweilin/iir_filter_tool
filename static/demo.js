@@ -2,19 +2,21 @@ const demoCases = JSON.parse(document.querySelector("#demo-data").textContent);
 
 const demoState = {
   index: 0,
-  coefficients: null,
-  inferred: null,
-  response: null,
+  designCoefficients: null,
+  designResponse: null,
+  inferenceInferred: null,
+  inferenceResponse: null,
   pyodide: null,
   ready: false,
 };
 
 const statusEl = document.querySelector("#status");
-const chart = document.querySelector("#response-chart");
-const chartMeta = document.querySelector("#chart-meta");
+const designChart = document.querySelector("#response-chart");
+const designChartMeta = document.querySelector("#chart-meta");
+const inferenceChart = document.querySelector("#inference-response-chart");
+const inferenceChartMeta = document.querySelector("#inference-chart-meta");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
-const applyInferredButton = document.querySelector("#apply-inferred");
 const presetList = document.querySelector("#preset-list");
 const inferButton = document.querySelector("#infer-submit");
 const autoUpdateIndicator = document.querySelector("#auto-update-indicator");
@@ -29,7 +31,6 @@ function setStatus(message, mode = "ready") {
 
 function setBusy(isBusy) {
   inferButton.disabled = isBusy || !demoState.ready;
-  applyInferredButton.disabled = isBusy || !demoState.inferred?.designable;
   autoUpdateIndicator.textContent = demoState.ready ? (isBusy ? "Updating" : "Auto updates") : "Loading engine";
 }
 
@@ -126,6 +127,14 @@ function currentDesignParams() {
   };
 }
 
+function currentInferPayload() {
+  return {
+    b: inferForm.elements.b.value,
+    a: inferForm.elements.a.value,
+    fs: positiveNumber(inferForm.elements.fs.value, "fs"),
+  };
+}
+
 function applyMethodDefaults() {
   const method = designForm.elements.method.value;
   if (method === "cheby1" && !designForm.elements.rp.value) {
@@ -159,24 +168,15 @@ function scheduleAutoDesign() {
   autoDesignTimer = setTimeout(runDesign, 450);
 }
 
-function currentInferPayload() {
-  return {
-    b: inferForm.elements.b.value,
-    a: inferForm.elements.a.value,
-    fs: positiveNumber(inferForm.elements.fs.value, "fs"),
-  };
-}
-
 function renderCase(index) {
   demoState.index = index;
   const demoCase = demoCases[index];
   setFormValues(demoCase.params);
   applyMethodDefaults();
-  renderResult({
+  renderDesignResult({
     b: demoCase.b,
     a: demoCase.a,
     response: demoCase.response,
-    inferred: demoCase.inferred,
   });
   setStatus(demoState.ready ? demoCase.title : "Loading Python", demoState.ready ? "ready" : "working");
 
@@ -185,21 +185,34 @@ function renderCase(index) {
   });
 }
 
-function renderResult(data) {
-  demoState.coefficients = { b: data.b, a: data.a };
-  demoState.inferred = data.inferred;
-  demoState.response = data.response;
+function renderDesignResult(data) {
+  if (data.b && data.a) {
+    demoState.designCoefficients = { b: data.b, a: data.a };
+    renderList("#b-list", data.b);
+    renderList("#a-list", data.a);
+    document.querySelector("#coeff-json").textContent = JSON.stringify(demoState.designCoefficients, null, 2);
+  }
 
-  renderList("#b-list", data.b);
-  renderList("#a-list", data.a);
-  renderSummary(data.inferred);
-  drawChart(data.response);
+  if (data.response) {
+    demoState.designResponse = data.response;
+    drawChart(designChart, designChartMeta, data.response);
+  }
 
-  inferForm.elements.b.value = JSON.stringify(data.b);
-  inferForm.elements.a.value = JSON.stringify(data.a);
-  inferForm.elements.fs.value = designForm.elements.fs.value || data.inferred?.fs || "";
-  document.querySelector("#coeff-json").textContent = JSON.stringify(demoState.coefficients, null, 2);
-  document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+  setBusy(false);
+}
+
+function renderInferenceResult(data) {
+  if (data.inferred) {
+    demoState.inferenceInferred = data.inferred;
+    renderSummary(data.inferred);
+    document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+  }
+
+  if (data.response) {
+    demoState.inferenceResponse = data.response;
+    drawChart(inferenceChart, inferenceChartMeta, data.response);
+  }
+
   setBusy(false);
 }
 
@@ -287,12 +300,10 @@ def py_design(payload_json):
     payload = json.loads(payload_json)
     fs = float(payload.get("fs", 48000))
     b, a = design_iir(payload, fs=fs)
-    inferred = infer_iir_params(b, a, fs)
     return json.dumps(_json_safe({
         "b": b,
         "a": a,
         "response": _frequency_response(b, a, fs),
-        "inferred": inferred,
     }))
 
 def py_infer(payload_json):
@@ -321,7 +332,7 @@ async function runDesign() {
     setBusy(true);
     setStatus("Designing", "working");
     const result = demoState.pyodide.globals.get("py_design")(JSON.stringify(currentDesignParams()));
-    renderResult(JSON.parse(result));
+    renderDesignResult(JSON.parse(result));
     setStatus("Designed");
     [...presetList.children].forEach((button) => button.classList.remove("is-active"));
   } catch (error) {
@@ -335,28 +346,22 @@ async function runInfer() {
     setBusy(true);
     setStatus("Inferring", "working");
     const result = demoState.pyodide.globals.get("py_infer")(JSON.stringify(currentInferPayload()));
-    const data = JSON.parse(result);
-    demoState.inferred = data.inferred;
-    demoState.response = data.response;
-    renderSummary(data.inferred);
-    drawChart(data.response);
-    document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+    renderInferenceResult(JSON.parse(result));
     setStatus("Inferred");
-    setBusy(false);
   } catch (error) {
     setStatus(error.message, "error");
     setBusy(false);
   }
 }
 
-function drawChart(response) {
-  const frequencies = response.frequency_hz || [];
-  const magnitudes = response.magnitude_db || [];
-  const ctx = chart.getContext("2d");
+function drawChart(canvas, metaEl, response) {
+  const frequencies = response?.frequency_hz || [];
+  const magnitudes = response?.magnitude_db || [];
+  const ctx = canvas.getContext("2d");
   const pixelRatio = window.devicePixelRatio || 1;
-  const rect = chart.getBoundingClientRect();
-  chart.width = Math.max(320, Math.floor(rect.width * pixelRatio));
-  chart.height = Math.max(260, Math.floor(rect.height * pixelRatio));
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.max(320, Math.floor(rect.width * pixelRatio));
+  canvas.height = Math.max(260, Math.floor(rect.height * pixelRatio));
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
   const width = rect.width;
@@ -366,7 +371,7 @@ function drawChart(response) {
   ctx.fillRect(0, 0, width, height);
 
   if (!frequencies.length || !magnitudes.length) {
-    chartMeta.textContent = "0 points";
+    metaEl.textContent = "0 points";
     return;
   }
 
@@ -433,7 +438,7 @@ function drawChart(response) {
   ctx.strokeStyle = "#006d77";
   ctx.lineWidth = 2;
   ctx.strokeRect(padding.left, padding.top, plotWidth, plotHeight);
-  chartMeta.textContent = `${frequencies.length} points`;
+  metaEl.textContent = `${frequencies.length} points`;
 }
 
 inferButton.addEventListener("click", runInfer);
@@ -453,30 +458,25 @@ designForm.addEventListener("change", (event) => {
 });
 
 document.querySelector("#copy-json").addEventListener("click", async () => {
-  if (!demoState.coefficients) {
+  if (!demoState.designCoefficients) {
     return;
   }
-  await navigator.clipboard.writeText(JSON.stringify(demoState.coefficients, null, 2));
+  await navigator.clipboard.writeText(JSON.stringify(demoState.designCoefficients, null, 2));
   setStatus("Copied");
 });
 
-applyInferredButton.addEventListener("click", () => {
-  const inferred = demoState.inferred;
-  if (!inferred) {
-    return;
-  }
-  setFormValues(inferred);
-  setStatus("Applied");
-});
-
 window.addEventListener("resize", () => {
-  if (demoState.response) {
-    drawChart(demoState.response);
+  if (demoState.designResponse) {
+    drawChart(designChart, designChartMeta, demoState.designResponse);
+  }
+  if (demoState.inferenceResponse) {
+    drawChart(inferenceChart, inferenceChartMeta, demoState.inferenceResponse);
   }
 });
 
 renderPresetButtons();
 renderCase(0);
+drawChart(inferenceChart, inferenceChartMeta, null);
 setBusy(true);
 initPyodideRuntime().catch((error) => {
   demoState.ready = false;

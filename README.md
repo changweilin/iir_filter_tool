@@ -134,7 +134,6 @@ Response 欄位包含：
 - `a`: denominator coefficients
 - `response.frequency_hz`: 頻率座標
 - `response.magnitude_db`: magnitude response，單位 dB
-- `inferred`: 從係數推估出的分析結果
 
 ### `POST /api/infer`
 
@@ -151,6 +150,8 @@ Request:
 ```
 
 `b` 和 `a` 可以是 JSON array，也可以是逗號或空白分隔的字串。
+
+Response 欄位包含 `inferred`、`response.frequency_hz`、`response.magnitude_db`。
 
 ## 參數說明
 

@@ -25,7 +25,9 @@ class PagesDemoTests(unittest.TestCase):
         self.assertIn("IIR Filter Static Demo", html)
         self.assertIn('select name="ftype"', html)
         self.assertIn('id="auto-update-indicator"', html)
+        self.assertIn('id="inference-response-chart"', html)
         self.assertNotIn('id="design-submit"', html)
+        self.assertNotIn('id="apply-inferred"', html)
         self.assertNotIn('input name="ftype" readonly', html)
         self.assertIn("pyodide/v0.29.3/full/pyodide.js", html)
         self.assertIn('script id="design-source"', html)
@@ -48,6 +50,7 @@ class PagesDemoTests(unittest.TestCase):
         self.assertEqual(len(data[0]["a"]), 3)
         self.assertEqual(len(data[0]["response"]["frequency_hz"]), 1024)
         self.assertEqual(len(data[0]["response"]["magnitude_db"]), 1024)
+        self.assertNotIn("inferred", data[0])
 
 
 if __name__ == "__main__":

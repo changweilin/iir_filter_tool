@@ -10,7 +10,7 @@
     <header class="app-header">
       <div>
         <p class="eyebrow">IIR Filter Tool</p>
-        <h1>設計、分析、反推濾波器</h1>
+        <h1>IIR Filter Tool</h1>
       </div>
       <div id="status" class="status" role="status" aria-live="polite">Ready</div>
     </header>
@@ -18,7 +18,7 @@
     <main class="shell">
       <section class="panel controls-panel" aria-labelledby="design-heading">
         <div class="section-title">
-          <h2 id="design-heading">設計參數</h2>
+          <h2 id="design-heading">Design Parameters</h2>
           <button id="design-submit" class="primary-button" type="button">Run Design</button>
         </div>
 
@@ -70,19 +70,9 @@
         </form>
       </section>
 
-      <section class="panel chart-panel" aria-labelledby="response-heading">
-        <div class="section-title">
-          <h2 id="response-heading">Magnitude Response</h2>
-          <span id="chart-meta" class="meta">0 points</span>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="response-chart" width="960" height="420" aria-label="Magnitude response chart"></canvas>
-        </div>
-      </section>
-
       <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
         <div class="section-title">
-          <h2 id="coefficients-heading">係數</h2>
+          <h2 id="coefficients-heading">Coefficients</h2>
           <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <div class="coeff-columns">
@@ -98,9 +88,19 @@
         <pre id="coeff-json" class="json-block">{}</pre>
       </section>
 
+      <section class="panel chart-panel" aria-labelledby="response-heading">
+        <div class="section-title">
+          <h2 id="response-heading">Magnitude Response</h2>
+          <span id="chart-meta" class="meta">0 points</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="response-chart" width="960" height="420" aria-label="Magnitude response chart"></canvas>
+        </div>
+      </section>
+
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
-          <h2 id="infer-heading">係數反推</h2>
+          <h2 id="infer-heading">Coefficient Inference</h2>
           <button id="infer-submit" class="primary-button" type="button">Run Infer</button>
         </div>
         <form id="infer-form" class="infer-grid">
@@ -121,11 +121,20 @@
 
       <section class="panel inferred-panel" aria-labelledby="inferred-heading">
         <div class="section-title">
-          <h2 id="inferred-heading">反推結果</h2>
-          <button id="apply-inferred" class="ghost-button" type="button" disabled>Apply</button>
+          <h2 id="inferred-heading">Inferred Result</h2>
         </div>
         <dl id="inferred-summary" class="summary-list"></dl>
         <pre id="inferred-json" class="json-block">{}</pre>
+      </section>
+
+      <section class="panel inference-response-panel" aria-labelledby="inference-response-heading">
+        <div class="section-title">
+          <h2 id="inference-response-heading">Inference Response</h2>
+          <span id="inference-chart-meta" class="meta">0 points</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="inference-response-chart" width="960" height="420" aria-label="Inference response chart"></canvas>
+        </div>
       </section>
     </main>
 

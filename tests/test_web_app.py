@@ -31,7 +31,7 @@ class WebAppTests(unittest.TestCase):
         self.assertTrue(all(np.isfinite(data["a"])))
         self.assertEqual(len(data["response"]["frequency_hz"]), 1024)
         self.assertEqual(len(data["response"]["magnitude_db"]), 1024)
-        self.assertIn("inferred", data)
+        self.assertNotIn("inferred", data)
 
     def test_design_rejects_frequency_at_or_above_nyquist(self):
         response = self.client.post(
@@ -77,6 +77,8 @@ class WebAppTests(unittest.TestCase):
         self.assertAlmostEqual(inferred["f0"], 1000, delta=10)
         self.assertEqual(inferred["order"], 2)
         self.assertIn("designable", inferred)
+        self.assertEqual(len(response.get_json()["response"]["frequency_hz"]), 1024)
+        self.assertEqual(len(response.get_json()["response"]["magnitude_db"]), 1024)
 
     def test_json_safe_serializes_numpy_and_complex_values(self):
         safe = _json_safe(
