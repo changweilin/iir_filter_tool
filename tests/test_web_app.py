@@ -22,6 +22,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("https://github.com/changweilin", html)
         self.assertIn("https://www.linkedin.com/in/wei-lin-chang-ba38049a/", html)
         self.assertIn("https://changweilin.github.io/demo_link/", html)
+        self.assertIn("https://changweilin.github.io/demo_link/favicon-32.png", html)
 
     def test_design_biquad_bandpass_returns_coefficients_and_response(self):
         response = self.client.post(
@@ -45,6 +46,29 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(len(data["response"]["frequency_hz"]), 1024)
         self.assertEqual(len(data["response"]["magnitude_db"]), 1024)
         self.assertNotIn("inferred", data)
+
+    def test_design_returns_tf_sos_and_zpk_coefficients(self):
+        response = self.client.post(
+            "/api/design",
+            json={
+                "ftype": "bandpass",
+                "method": "biquad",
+                "fs": 48000,
+                "f0": 1000,
+                "Q": 5,
+                "order": 2,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        coefficients = response.get_json()["coefficients"]
+        self.assertEqual(set(coefficients), {"tf", "sos", "zpk"})
+        self.assertEqual(len(coefficients["tf"]["b"]), 3)
+        self.assertEqual(len(coefficients["tf"]["a"]), 3)
+        self.assertEqual(len(coefficients["sos"][0]), 6)
+        self.assertIn("z", coefficients["zpk"])
+        self.assertIn("p", coefficients["zpk"])
+        self.assertIn("k", coefficients["zpk"])
 
     def test_design_accepts_custom_response_points(self):
         response = self.client.post(
@@ -112,6 +136,62 @@ class WebAppTests(unittest.TestCase):
         self.assertIn("designable", inferred)
         self.assertEqual(len(response.get_json()["response"]["frequency_hz"]), 512)
         self.assertEqual(len(response.get_json()["response"]["magnitude_db"]), 512)
+
+    def test_infer_accepts_sos_coefficients(self):
+        design_response = self.client.post(
+            "/api/design",
+            json={
+                "ftype": "bandpass",
+                "method": "biquad",
+                "fs": 48000,
+                "f0": 1000,
+                "Q": 5,
+                "order": 2,
+            },
+        )
+        sos = design_response.get_json()["coefficients"]["sos"]
+
+        response = self.client.post(
+            "/api/infer",
+            json={
+                "coefficient_mode": "sos",
+                "sos": sos,
+                "fs": 48000,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["inferred"]["ftype"], "bandpass")
+        self.assertIn("coefficients", data)
+
+    def test_infer_accepts_zpk_coefficients(self):
+        design_response = self.client.post(
+            "/api/design",
+            json={
+                "ftype": "bandpass",
+                "method": "biquad",
+                "fs": 48000,
+                "f0": 1000,
+                "Q": 5,
+                "order": 2,
+            },
+        )
+        zpk = design_response.get_json()["coefficients"]["zpk"]
+
+        response = self.client.post(
+            "/api/infer",
+            json={
+                "coefficient_mode": "zpk",
+                "zpk": zpk,
+                "fs": 48000,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["inferred"]["ftype"], "bandpass")
+        self.assertAlmostEqual(data["inferred"]["f0"], 1000, delta=10)
 
     def test_json_safe_serializes_numpy_and_complex_values(self):
         safe = _json_safe(

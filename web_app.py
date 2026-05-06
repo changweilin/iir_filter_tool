@@ -5,7 +5,7 @@ import socket
 
 import numpy as np
 from flask import Flask, jsonify, render_template, request
-from scipy.signal import freqz
+from scipy.signal import freqz, sos2tf, tf2sos, tf2zpk, zpk2tf
 
 from iir_filter import design_iir, infer_iir_params
 
@@ -34,6 +34,7 @@ def create_app():
                 {
                     "b": _json_safe(b),
                     "a": _json_safe(a),
+                    "coefficients": _json_safe(_coefficient_representations(b, a)),
                     "response": _frequency_response(b, a, fs, response_points),
                 }
             )
@@ -46,12 +47,12 @@ def create_app():
             payload = request.get_json(silent=True) or {}
             fs = _positive_float(payload.get("fs", DEFAULT_FS), "fs")
             response_points = _response_points(payload)
-            b = _parse_coefficients(payload.get("b"), "b")
-            a = _parse_coefficients(payload.get("a"), "a")
+            b, a = _coefficients_from_payload(payload)
             inferred = infer_iir_params(b, a, fs)
             return jsonify(
                 {
                     "inferred": _json_safe(inferred),
+                    "coefficients": _json_safe(_coefficient_representations(b, a)),
                     "response": _frequency_response(b, a, fs, response_points),
                 }
             )
@@ -144,6 +145,144 @@ def _parse_coefficients(value, name):
     if not np.all(np.isfinite(coefficients)):
         raise ValueError(f"{name} coefficients must be finite")
     return coefficients
+
+
+def _coefficient_mode(payload):
+    mode = str(payload.get("coefficient_mode", payload.get("mode", "tf"))).lower()
+    if mode not in {"tf", "sos", "zpk"}:
+        raise ValueError(f"Unsupported coefficient mode: {mode}")
+    return mode
+
+
+def _coefficients_from_payload(payload):
+    mode = _coefficient_mode(payload)
+    if mode == "tf":
+        return _parse_coefficients(payload.get("b"), "b"), _parse_coefficients(payload.get("a"), "a")
+    if mode == "sos":
+        b, a = sos2tf(_parse_sos(payload.get("sos")))
+        return _real_coefficients(b, "b"), _real_coefficients(a, "a")
+
+    z, p, k = _parse_zpk(payload)
+    b, a = zpk2tf(z, p, k)
+    return _real_coefficients(b, "b"), _real_coefficients(a, "a")
+
+
+def _parse_sos(value):
+    if value is None or (isinstance(value, str) and value == ""):
+        raise ValueError("Missing required field: sos")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError("Missing required field: sos")
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            value = [part for part in re.split(r"[\s,]+", text) if part]
+
+    try:
+        sos = np.asarray(value, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("sos must be a numeric second-order-section array") from exc
+
+    if sos.ndim == 1 and sos.size % 6 == 0:
+        sos = sos.reshape((-1, 6))
+    if sos.ndim != 2 or sos.shape[1] != 6 or sos.shape[0] == 0:
+        raise ValueError("sos must have shape (n_sections, 6)")
+    if not np.all(np.isfinite(sos)):
+        raise ValueError("sos coefficients must be finite")
+    return sos
+
+
+def _parse_zpk(payload):
+    raw = payload.get("zpk")
+    if raw is not None:
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError("zpk must be valid JSON") from exc
+        if isinstance(raw, (list, tuple)) and len(raw) == 3:
+            z, p, k = raw
+        elif isinstance(raw, dict):
+            z = raw.get("z", raw.get("zeros"))
+            p = raw.get("p", raw.get("poles"))
+            k = raw.get("k", raw.get("gain", 1))
+        else:
+            raise ValueError("zpk must be an object or [z, p, k] array")
+    else:
+        z = payload.get("z", payload.get("zeros"))
+        p = payload.get("p", payload.get("poles"))
+        k = payload.get("k", payload.get("gain", 1))
+
+    zeros = _parse_complex_array(z, "z")
+    poles = _parse_complex_array(p, "p")
+    try:
+        gain = complex(_parse_complex_value(k, "k"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("k must be a finite numeric gain") from exc
+    if not np.isfinite(gain.real) or not np.isfinite(gain.imag):
+        raise ValueError("k must be finite")
+    return zeros, poles, gain
+
+
+def _parse_complex_array(value, name):
+    if value is None or (isinstance(value, str) and value == ""):
+        return np.array([], dtype=complex)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return np.array([], dtype=complex)
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            value = [part for part in re.split(r"[\s,]+", text) if part]
+
+    try:
+        values = np.asarray([_parse_complex_value(item, name) for item in value], dtype=complex)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an array") from exc
+    if values.ndim != 1:
+        raise ValueError(f"{name} must be a one-dimensional array")
+    if not np.all(np.isfinite(values.real)) or not np.all(np.isfinite(values.imag)):
+        raise ValueError(f"{name} values must be finite")
+    return values
+
+
+def _parse_complex_value(value, name):
+    if isinstance(value, dict):
+        real = value.get("real", value.get("re", 0))
+        imag = value.get("imag", value.get("im", 0))
+        return complex(float(real), float(imag))
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return complex(float(value[0]), float(value[1]))
+    if isinstance(value, str):
+        return complex(value.replace("i", "j").replace(" ", ""))
+    try:
+        return complex(float(value), 0.0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} values must be finite numbers") from exc
+
+
+def _real_coefficients(value, name):
+    coefficients = np.real_if_close(np.asarray(value), tol=1000)
+    try:
+        coefficients = np.asarray(coefficients, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} coefficients must be real-valued") from exc
+    if coefficients.ndim != 1 or coefficients.size == 0:
+        raise ValueError(f"{name} must be a one-dimensional coefficient array")
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError(f"{name} coefficients must be finite")
+    return coefficients
+
+
+def _coefficient_representations(b, a):
+    z, p, k = tf2zpk(b, a)
+    return {
+        "tf": {"b": b, "a": a},
+        "sos": tf2sos(b, a),
+        "zpk": {"z": z, "p": p, "k": k},
+    }
 
 
 def _frequency_response(b, a, fs, points=RESPONSE_POINTS):

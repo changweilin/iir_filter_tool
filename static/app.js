@@ -5,11 +5,33 @@ const state = {
   },
   inference: {
     inferred: null,
+    coefficients: null,
     response: null,
   },
 };
 
 const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v2";
+const COEFFICIENT_MODE_NAMES = {
+  design: "design-coefficient-mode",
+  inference: "inference-coefficient-mode",
+};
+const INFERENCE_MODE_DETAILS = {
+  tf: {
+    label: "Coefficient text (b0,b1,b2,a0,a1,a2)",
+    placeholder: "b0,b1,b2,a0,a1,a2",
+    sample: "[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]",
+  },
+  sos: {
+    label: "Second-order sections (JSON rows)",
+    placeholder: "[[b0,b1,b2,a0,a1,a2]]",
+    sample: "[[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]]",
+  },
+  zpk: {
+    label: "Zeros / poles / gain (JSON)",
+    placeholder: '{"z":[1,-1],"p":[{"real":0.97838071,"imag":0.13132694},{"real":0.97838071,"imag":-0.13132694}],"k":0.01276221}',
+    sample: '{"z":[1,-1],"p":[{"real":0.97838071,"imag":0.13132694},{"real":0.97838071,"imag":-0.13132694}],"k":0.01276221}',
+  },
+};
 const statusEl = document.querySelector("#status");
 const designChart = document.querySelector("#response-chart");
 const designResponsePointsInput = document.querySelector("#design-response-points");
@@ -17,8 +39,12 @@ const inferenceChart = document.querySelector("#inference-response-chart");
 const inferenceResponsePointsInput = document.querySelector("#inference-response-points");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
+const designCoefficientView = document.querySelector("#design-coeff-view");
+const inferenceCoeffLabel = document.querySelector("#inference-coeff-label");
+const inferenceCoeffTextarea = inferForm.elements.coefficients;
 let autoInferTimer = null;
 let lastCopiedInferredJson = "";
+let lastInferenceMode = "tf";
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
@@ -51,10 +77,9 @@ function designPayload() {
 
 function inferPayload() {
   const data = new FormData(inferForm);
-  const coefficients = parseCoefficientText(data.get("coefficients"));
+  const coefficients = parseCoefficientInput(data.get("coefficients"), selectedInferenceCoefficientMode());
   return {
-    b: coefficients.b,
-    a: coefficients.a,
+    ...coefficients,
     fs: numberOrNull(data.get("fs")),
     response_points: responsePoints(inferenceResponsePointsInput.value),
   };
@@ -79,10 +104,40 @@ function formatNumber(value) {
   if (value == null) {
     return "null";
   }
+  if (isComplexObject(value)) {
+    return formatComplex(value);
+  }
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toPrecision(8);
   }
   return String(value);
+}
+
+function isComplexObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && ("real" in value || "imag" in value);
+}
+
+function formatComplex(value) {
+  const real = Number(value?.real || 0);
+  const imag = Number(value?.imag || 0);
+  if (!Number.isFinite(real) || !Number.isFinite(imag)) {
+    return String(value);
+  }
+  if (Math.abs(imag) < 1e-14) {
+    return formatNumber(real);
+  }
+  if (Math.abs(real) < 1e-14) {
+    return `${formatNumber(imag)}j`;
+  }
+  const sign = imag >= 0 ? "+" : "-";
+  return `${formatNumber(real)} ${sign} ${formatNumber(Math.abs(imag))}j`;
+}
+
+function formatCoefficientValue(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(formatCoefficientValue).join(", ")}]`;
+  }
+  return formatNumber(value);
 }
 
 function parseNumberSequence(text) {
@@ -122,6 +177,146 @@ function parseCoefficientText(text) {
     b: values.slice(0, splitIndex),
     a: values.slice(splitIndex),
   };
+}
+
+function parseJsonText(text, name) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    throw new Error(`${name} is required`);
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    throw new Error(`${name} must be valid JSON`);
+  }
+}
+
+function parseNumberArray(value, name) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${name} must be an array`);
+  }
+  const values = value.map((item) => Number(item));
+  if (!values.length || values.some((item) => !Number.isFinite(item))) {
+    throw new Error(`${name} must contain only finite numbers`);
+  }
+  return values;
+}
+
+function parseTfInput(text) {
+  const trimmed = String(text || "").trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    const tf = parsed?.tf || parsed;
+    if (tf && typeof tf === "object" && !Array.isArray(tf) && Array.isArray(tf.b) && Array.isArray(tf.a)) {
+      return {
+        coefficient_mode: "tf",
+        b: parseNumberArray(tf.b, "b"),
+        a: parseNumberArray(tf.a, "a"),
+      };
+    }
+  } catch {
+    // Fall through to the compact b/a sequence format.
+  }
+
+  return {
+    coefficient_mode: "tf",
+    ...parseCoefficientText(trimmed),
+  };
+}
+
+function parseSosInput(text) {
+  const parsed = parseJsonText(text, "SOS coefficients");
+  const rawRows = parsed?.sos || parsed;
+  if (!Array.isArray(rawRows)) {
+    throw new Error("SOS coefficients must be an array");
+  }
+
+  const rows = rawRows.every((row) => !Array.isArray(row))
+    ? chunkSosRow(parseNumberArray(rawRows, "sos"))
+    : rawRows.map((row) => parseNumberArray(row, "sos row"));
+
+  if (!rows.length || rows.some((row) => row.length !== 6)) {
+    throw new Error("Each SOS row must contain 6 numbers");
+  }
+  return {
+    coefficient_mode: "sos",
+    sos: rows,
+  };
+}
+
+function chunkSosRow(values) {
+  if (values.length % 6 !== 0) {
+    throw new Error("SOS coefficient count must be a multiple of 6");
+  }
+  const rows = [];
+  for (let index = 0; index < values.length; index += 6) {
+    rows.push(values.slice(index, index + 6));
+  }
+  return rows;
+}
+
+function parseZpkInput(text) {
+  const parsed = parseJsonText(text, "ZPK coefficients");
+  let zpk = parsed?.zpk || parsed;
+  if (Array.isArray(zpk) && zpk.length === 3) {
+    zpk = { z: zpk[0], p: zpk[1], k: zpk[2] };
+  }
+  if (!zpk || typeof zpk !== "object" || Array.isArray(zpk)) {
+    throw new Error("ZPK coefficients must be an object or [z, p, k] array");
+  }
+
+  return {
+    coefficient_mode: "zpk",
+    z: parseComplexArray(zpk.z ?? zpk.zeros ?? [], "z"),
+    p: parseComplexArray(zpk.p ?? zpk.poles ?? [], "p"),
+    k: parseComplexValue(zpk.k ?? zpk.gain ?? 1, "k"),
+  };
+}
+
+function parseComplexArray(value, name) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${name} must be an array`);
+  }
+  return value.map((item) => parseComplexValue(item, name));
+}
+
+function parseComplexValue(value, name) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`${name} values must be finite`);
+    }
+    return value;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value) && value.length === 2) {
+    const real = Number(value[0]);
+    const imag = Number(value[1]);
+    if (!Number.isFinite(real) || !Number.isFinite(imag)) {
+      throw new Error(`${name} values must be finite`);
+    }
+    return { real, imag };
+  }
+  if (value && typeof value === "object") {
+    const real = Number(value.real ?? value.re ?? 0);
+    const imag = Number(value.imag ?? value.im ?? 0);
+    if (!Number.isFinite(real) || !Number.isFinite(imag)) {
+      throw new Error(`${name} values must be finite`);
+    }
+    return { real, imag };
+  }
+  throw new Error(`${name} values must be numbers or complex objects`);
+}
+
+function parseCoefficientInput(text, mode) {
+  if (mode === "sos") {
+    return parseSosInput(text);
+  }
+  if (mode === "zpk") {
+    return parseZpkInput(text);
+  }
+  return parseTfInput(text);
 }
 
 function responsePoints(value) {
@@ -271,14 +466,129 @@ async function pasteDesignJson() {
   }
 }
 
-function renderList(selector, values) {
-  const list = document.querySelector(selector);
-  list.innerHTML = "";
-  (values || []).forEach((value) => {
-    const item = document.createElement("li");
-    item.textContent = formatNumber(value);
-    list.appendChild(item);
+function selectedCoefficientMode(name) {
+  return document.querySelector(`input[name="${name}"]:checked`)?.value || "tf";
+}
+
+function selectedDesignCoefficientMode() {
+  return selectedCoefficientMode(COEFFICIENT_MODE_NAMES.design);
+}
+
+function selectedInferenceCoefficientMode() {
+  return selectedCoefficientMode(COEFFICIENT_MODE_NAMES.inference);
+}
+
+function coefficientRepresentations(data) {
+  if (data?.coefficients) {
+    return data.coefficients;
+  }
+  if (data?.b && data?.a) {
+    return { tf: { b: data.b, a: data.a } };
+  }
+  return null;
+}
+
+function coefficientGroups(coefficients, mode) {
+  if (!coefficients) {
+    return [];
+  }
+  if (mode === "sos") {
+    return (coefficients.sos || []).map((row, index) => ({
+      title: `section ${index + 1}`,
+      values: row,
+    }));
+  }
+  if (mode === "zpk") {
+    const zpk = coefficients.zpk || {};
+    return [
+      { title: "z", values: zpk.z || [] },
+      { title: "p", values: zpk.p || [] },
+      { title: "k", values: [zpk.k] },
+    ];
+  }
+  return [
+    { title: "b", id: "b-list", values: coefficients.tf?.b || [] },
+    { title: "a", id: "a-list", values: coefficients.tf?.a || [] },
+  ];
+}
+
+function renderCoefficientView(container, coefficients, mode) {
+  container.innerHTML = "";
+  coefficientGroups(coefficients, mode).forEach((group) => {
+    const column = document.createElement("div");
+    const title = document.createElement("h3");
+    const list = document.createElement("ul");
+    title.textContent = group.title;
+    list.className = "coeff-list";
+    if (group.id) {
+      list.id = group.id;
+    }
+    (group.values || []).forEach((value) => {
+      const item = document.createElement("li");
+      item.textContent = formatCoefficientValue(value);
+      list.appendChild(item);
+    });
+    column.append(title, list);
+    container.appendChild(column);
   });
+}
+
+function selectedRepresentation(coefficients, mode) {
+  if (!coefficients) {
+    return null;
+  }
+  if (mode === "sos") {
+    return coefficients.sos || null;
+  }
+  if (mode === "zpk") {
+    return coefficients.zpk || null;
+  }
+  return coefficients.tf || null;
+}
+
+function coefficientTextForMode(coefficients, mode) {
+  const representation = selectedRepresentation(coefficients, mode);
+  if (!representation) {
+    return "";
+  }
+  if (mode === "tf") {
+    return coefficientText(representation);
+  }
+  if (mode === "sos") {
+    return (representation || []).map((row) => row.map(formatCoefficientValue).join(",")).join("\n");
+  }
+  return JSON.stringify(representation, null, 2);
+}
+
+function renderDesignCoefficients() {
+  const mode = selectedDesignCoefficientMode();
+  const representation = selectedRepresentation(state.design.coefficients, mode);
+  renderCoefficientView(designCoefficientView, state.design.coefficients, mode);
+  document.querySelector("#coeff-json").textContent = JSON.stringify(representation || {}, null, 2);
+}
+
+function coefficientInputText(mode, coefficients) {
+  const text = coefficientTextForMode(coefficients, mode);
+  if (text) {
+    return mode === "sos" ? JSON.stringify(coefficients.sos || [], null, 2) : text;
+  }
+  return INFERENCE_MODE_DETAILS[mode].sample;
+}
+
+function updateInferenceModeUi(useCurrentCoefficients = false) {
+  const mode = selectedInferenceCoefficientMode();
+  const details = INFERENCE_MODE_DETAILS[mode];
+  const previousDetails = INFERENCE_MODE_DETAILS[lastInferenceMode];
+  const currentText = inferenceCoeffTextarea.value.trim();
+  inferenceCoeffLabel.textContent = details.label;
+  inferenceCoeffTextarea.placeholder = details.placeholder;
+
+  if (useCurrentCoefficients && state.inference.coefficients?.[mode]) {
+    inferenceCoeffTextarea.value = coefficientInputText(mode, state.inference.coefficients);
+  } else if (!currentText || currentText === previousDetails.sample) {
+    inferenceCoeffTextarea.value = details.sample;
+  }
+  lastInferenceMode = mode;
 }
 
 function renderSummary(inferred) {
@@ -297,11 +607,10 @@ function renderSummary(inferred) {
 }
 
 function renderDesignResult(data) {
-  if (data.b && data.a) {
-    state.design.coefficients = { b: data.b, a: data.a };
-    renderList("#b-list", data.b);
-    renderList("#a-list", data.a);
-    document.querySelector("#coeff-json").textContent = JSON.stringify(state.design.coefficients, null, 2);
+  const coefficients = coefficientRepresentations(data);
+  if (coefficients) {
+    state.design.coefficients = coefficients;
+    renderDesignCoefficients();
   }
 
   if (data.response) {
@@ -311,6 +620,11 @@ function renderDesignResult(data) {
 }
 
 function renderInferenceResult(data) {
+  const coefficients = coefficientRepresentations(data);
+  if (coefficients) {
+    state.inference.coefficients = coefficients;
+  }
+
   if (data.inferred) {
     state.inference.inferred = data.inferred;
     renderSummary(data.inferred);
@@ -441,17 +755,18 @@ designResponsePointsInput.addEventListener("change", () => {
   runDesign();
 });
 document.querySelector("#copy-json").addEventListener("click", async () => {
-  if (!state.design.coefficients) {
+  const representation = selectedRepresentation(state.design.coefficients, selectedDesignCoefficientMode());
+  if (!representation) {
     return;
   }
-  await writeClipboardText(JSON.stringify(state.design.coefficients, null, 2));
+  await writeClipboardText(JSON.stringify(representation, null, 2));
   setStatus("Copied");
 });
 document.querySelector("#copy-text").addEventListener("click", async () => {
   if (!state.design.coefficients) {
     return;
   }
-  await writeClipboardText(coefficientText(state.design.coefficients));
+  await writeClipboardText(coefficientTextForMode(state.design.coefficients, selectedDesignCoefficientMode()));
   setStatus("Copied text");
 });
 document.querySelector("#copy-inferred-json").addEventListener("click", async () => {
@@ -474,6 +789,16 @@ inferenceResponsePointsInput.addEventListener("change", () => {
   persistControlValues();
   scheduleAutoInfer();
 });
+document.querySelectorAll(`input[name="${COEFFICIENT_MODE_NAMES.design}"]`).forEach((control) => {
+  control.addEventListener("change", renderDesignCoefficients);
+});
+document.querySelectorAll(`input[name="${COEFFICIENT_MODE_NAMES.inference}"]`).forEach((control) => {
+  control.addEventListener("change", () => {
+    updateInferenceModeUi(true);
+    persistControlValues();
+    scheduleAutoInfer();
+  });
+});
 window.addEventListener("resize", () => {
   if (state.design.response) {
     drawChart(designChart, state.design.response);
@@ -485,5 +810,6 @@ window.addEventListener("resize", () => {
 
 drawChart(inferenceChart, null);
 restoreControlValues();
+updateInferenceModeUi(false);
 runDesign();
 scheduleAutoInfer();

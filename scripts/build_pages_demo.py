@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from scipy.signal import freqz
+from scipy.signal import freqz, tf2sos, tf2zpk
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -146,13 +146,30 @@ def _render_html():
 
       <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
         <div class="section-title">
-          <h2 id="coefficients-heading">Design Coefficients</h2>
+          <div class="title-with-mode">
+            <h2 id="coefficients-heading">Design Coefficients</h2>
+            <fieldset class="mode-toggle" aria-label="Design coefficient mode">
+              <legend>Design coefficient mode</legend>
+              <label>
+                <input type="radio" name="design-coefficient-mode" value="tf" checked>
+                <span>tf</span>
+              </label>
+              <label>
+                <input type="radio" name="design-coefficient-mode" value="sos">
+                <span>sos</span>
+              </label>
+              <label>
+                <input type="radio" name="design-coefficient-mode" value="zpk">
+                <span>zpk</span>
+              </label>
+            </fieldset>
+          </div>
           <div class="button-group" aria-label="Coefficient copy actions">
             <button id="copy-text" class="ghost-button" type="button">Copy Text</button>
             <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
           </div>
         </div>
-        <div class="coeff-columns">
+        <div id="design-coeff-view" class="coeff-columns">
           <div>
             <h3>b</h3>
             <ul id="b-list" class="coeff-list"></ul>
@@ -167,11 +184,28 @@ def _render_html():
 
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
-          <h2 id="infer-heading">Inference Coefficient</h2>
+          <div class="title-with-mode">
+            <h2 id="infer-heading">Inference Coefficients</h2>
+            <fieldset class="mode-toggle" aria-label="Inference coefficient mode">
+              <legend>Inference coefficient mode</legend>
+              <label>
+                <input type="radio" name="inference-coefficient-mode" value="tf" checked>
+                <span>tf</span>
+              </label>
+              <label>
+                <input type="radio" name="inference-coefficient-mode" value="sos">
+                <span>sos</span>
+              </label>
+              <label>
+                <input type="radio" name="inference-coefficient-mode" value="zpk">
+                <span>zpk</span>
+              </label>
+            </fieldset>
+          </div>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
-            <span>Coefficient text (b0,b1,b2,a0,a1,a2)</span>
+            <span id="inference-coeff-label">Coefficient text (b0,b1,b2,a0,a1,a2)</span>
             <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]</textarea>
           </label>
           <label>
@@ -227,10 +261,7 @@ def _render_html():
             <span class="sr-only">LinkedIn</span>
           </a>
           <a class="social-link" href="https://changweilin.github.io/demo_link/" target="_blank" rel="noreferrer" aria-label="Demo links" title="Demo links">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3Z"></path>
-              <path d="M5 5h6v2H7v10h10v-4h2v6H5V5Z"></path>
-            </svg>
+            <img src="https://changweilin.github.io/demo_link/favicon-32.png" alt="" width="22" height="22" loading="lazy" decoding="async">
             <span class="sr-only">Demo links</span>
           </a>
         </nav>
@@ -254,6 +285,7 @@ def _build_initial_design_result():
         "params": _json_safe(params),
         "b": _json_safe(b),
         "a": _json_safe(a),
+        "coefficients": _json_safe(_coefficient_representations(b, a)),
         "response": _frequency_response(b, a, params["fs"], RESPONSE_POINTS),
     }
 
@@ -265,6 +297,15 @@ def _frequency_response(b, a, fs, points):
     return {
         "frequency_hz": _json_safe(frequency),
         "magnitude_db": _json_safe(magnitude_db),
+    }
+
+
+def _coefficient_representations(b, a):
+    z, p, k = tf2zpk(b, a)
+    return {
+        "tf": {"b": b, "a": a},
+        "sos": tf2sos(b, a),
+        "zpk": {"z": z, "p": p, "k": k},
     }
 
 
