@@ -1,9 +1,29 @@
 import argparse
+import json
 import shutil
+import sys
 from pathlib import Path
+
+import numpy as np
+from scipy.signal import freqz
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from iir_filter import design_iir
+
+RESPONSE_POINTS = 1024
+DEFAULT_DESIGN_PARAMS = {
+    "ftype": "bandpass",
+    "method": "biquad",
+    "fs": 48000,
+    "f0": 1000,
+    "Q": 5,
+    "order": 2,
+    "rp": None,
+    "rs": None,
+}
 
 
 def build_site(output_dir):
@@ -29,6 +49,12 @@ def _prepare_output_dir(output_path):
 
 
 def _render_html():
+    initial_response = json.dumps(
+        _build_initial_design_result(),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    initial_response = initial_response.replace("</", "<\\/")
     design_source = _script_safe_text((REPO_ROOT / "iir_filter" / "design.py").read_text(encoding="utf-8"))
     infer_source = _script_safe_text((REPO_ROOT / "iir_filter" / "infer.py").read_text(encoding="utf-8"))
     return f"""<!doctype html>
@@ -178,6 +204,7 @@ def _render_html():
       </section>
     </main>
 
+    <script id="initial-response" type="application/json">{initial_response}</script>
     <script id="design-source" type="text/plain">{design_source}</script>
     <script id="infer-source" type="text/plain">{infer_source}</script>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
@@ -185,6 +212,47 @@ def _render_html():
   </body>
 </html>
 """
+
+
+def _build_initial_design_result():
+    params = DEFAULT_DESIGN_PARAMS.copy()
+    b, a = design_iir(params, fs=params["fs"])
+    return {
+        "params": _json_safe(params),
+        "b": _json_safe(b),
+        "a": _json_safe(a),
+        "response": _frequency_response(b, a, params["fs"], RESPONSE_POINTS),
+    }
+
+
+def _frequency_response(b, a, fs, points):
+    frequency, response = freqz(b, a, worN=points, fs=fs)
+    magnitude = np.maximum(np.abs(response), np.finfo(float).tiny)
+    magnitude_db = 20 * np.log10(magnitude)
+    return {
+        "frequency_hz": _json_safe(frequency),
+        "magnitude_db": _json_safe(magnitude_db),
+    }
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, complex):
+        return {"real": _json_safe(value.real), "imag": _json_safe(value.imag)}
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    return value
 
 
 def _script_safe_text(text):

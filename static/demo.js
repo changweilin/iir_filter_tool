@@ -31,6 +31,15 @@ let autoInferTimer = null;
 let autoInferPending = false;
 let lastCopiedInferredJson = "";
 
+function parseInitialResponse() {
+  try {
+    const data = JSON.parse(document.querySelector("#initial-response")?.textContent || "null");
+    return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
   statusEl.classList.toggle("is-error", mode === "error");
@@ -631,9 +640,13 @@ window.addEventListener("resize", () => {
   }
 });
 
-setFormValues(DEFAULT_DESIGN_PARAMS);
+const initialResponse = parseInitialResponse();
+setFormValues(initialResponse?.params || DEFAULT_DESIGN_PARAMS);
 applyMethodDefaults();
 setStatus("Loading Python", "working");
+if (initialResponse) {
+  renderDesignResult(initialResponse);
+}
 drawChart(inferenceChart, null);
 setBusy(true);
 initPyodideRuntime().catch((error) => {

@@ -1,3 +1,5 @@
+import json
+import re
 import shutil
 import unittest
 from pathlib import Path
@@ -30,6 +32,7 @@ class PagesDemoTests(unittest.TestCase):
         self.assertIn("Design Response", html)
         self.assertIn("Inference Coefficient", html)
         self.assertIn("Inference Parameters", html)
+        self.assertIn('id="initial-response"', html)
         self.assertIn('id="design-response-points"', html)
         self.assertIn('id="inference-response-points"', html)
         self.assertIn('id="inference-response-chart"', html)
@@ -54,6 +57,24 @@ class PagesDemoTests(unittest.TestCase):
         self.assertIn('script id="design-source"', html)
         self.assertIn('script id="infer-source"', html)
         self.assertIn("static/demo.js", html)
+
+    def test_initial_response_contains_default_chart_data(self):
+        output = build_site(self.output_dir)
+        html = (output / "index.html").read_text(encoding="utf-8")
+        match = re.search(
+            r'<script id="initial-response" type="application/json">(.*?)</script>',
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+
+        data = json.loads(match.group(1))
+        self.assertEqual(data["params"]["ftype"], "bandpass")
+        self.assertEqual(data["params"]["method"], "biquad")
+        self.assertIn("b", data)
+        self.assertIn("a", data)
+        self.assertEqual(len(data["response"]["frequency_hz"]), 1024)
+        self.assertEqual(len(data["response"]["magnitude_db"]), 1024)
 
 
 if __name__ == "__main__":

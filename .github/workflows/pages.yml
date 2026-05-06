@@ -48,6 +48,7 @@ jobs:
           test -s site/static/styles.css
           test -s site/static/demo.js
           grep -q "IIR Filter Static Demo" site/index.html
+          grep -q "initial-response" site/index.html
           grep -q "design-source" site/index.html
           grep -q "infer-source" site/index.html
           grep -q "design-response-points" site/index.html
@@ -58,9 +59,29 @@ jobs:
       - name: Verify static demo markup
         run: |
           python - <<'PY'
+          import json
+          import re
           from pathlib import Path
 
           html = Path("site/index.html").read_text(encoding="utf-8")
+          match = re.search(
+              r'<script id="initial-response" type="application/json">(.*?)</script>',
+              html,
+              re.S,
+          )
+          if match is None:
+              raise SystemExit("initial-response script is missing")
+
+          data = json.loads(match.group(1))
+          response = data.get("response") or {}
+          frequency = response.get("frequency_hz") or []
+          magnitude = response.get("magnitude_db") or []
+          if len(frequency) != 1024 or len(magnitude) != 1024:
+              raise SystemExit(
+                  "initial-response has invalid chart data: "
+                  f"{len(frequency)} frequency points, {len(magnitude)} magnitude points"
+              )
+
           forbidden = [
               "demo-data",
               "preset-list",
