@@ -64,6 +64,82 @@ def _estimate_q(f0, f1, f2):
     return float(f0 / (f2 - f1))
 
 
+def _rbj_f0_q_from_denominator(a, fs):
+    a = np.asarray(a, dtype=float)
+    if a.size != 3 or a[0] == 0:
+        return None, None
+
+    a = a / a[0]
+    denom = 1 + a[2]
+    if denom <= 0:
+        return None, None
+
+    cos_w0 = -a[1] / denom
+    if cos_w0 < -1.0000001 or cos_w0 > 1.0000001:
+        return None, None
+
+    w0 = float(np.arccos(np.clip(cos_w0, -1, 1)))
+    alpha = (1 - a[2]) / denom
+    sin_w0 = float(np.sin(w0))
+    if alpha <= 0 or sin_w0 <= 0:
+        q = None
+    else:
+        q = float(sin_w0 / (2 * alpha))
+
+    return float(w0 * fs / (2 * np.pi)), q
+
+
+def _interpolate_threshold(f_left, y_left, f_right, y_right, threshold):
+    if y_right == y_left:
+        return float(f_left)
+    ratio = (threshold - y_left) / (y_right - y_left)
+    return float(f_left + ratio * (f_right - f_left))
+
+
+def _last_upward_crossing(f, mag, threshold, peak_index):
+    below = np.flatnonzero(mag[:peak_index] <= threshold)
+    if below.size == 0:
+        return None
+    left = int(below[-1])
+    right = left + 1
+    if right > peak_index:
+        return float(f[left])
+    return _interpolate_threshold(f[left], mag[left], f[right], mag[right], threshold)
+
+
+def _first_downward_crossing(f, mag, threshold, peak_index):
+    below = np.flatnonzero(mag[peak_index:] <= threshold)
+    if below.size == 0:
+        return None
+    right = int(peak_index + below[0])
+    left = right - 1
+    if left < peak_index:
+        return float(f[right])
+    return _interpolate_threshold(f[left], mag[left], f[right], mag[right], threshold)
+
+
+def _last_downward_crossing(f, mag, threshold, valley_index):
+    above = np.flatnonzero(mag[:valley_index] >= threshold)
+    if above.size == 0:
+        return None
+    left = int(above[-1])
+    right = left + 1
+    if right > valley_index:
+        return float(f[left])
+    return _interpolate_threshold(f[left], mag[left], f[right], mag[right], threshold)
+
+
+def _first_upward_crossing(f, mag, threshold, valley_index):
+    above = np.flatnonzero(mag[valley_index:] >= threshold)
+    if above.size == 0:
+        return None
+    right = int(valley_index + above[0])
+    left = right - 1
+    if left < valley_index:
+        return float(f[right])
+    return _interpolate_threshold(f[left], mag[left], f[right], mag[right], threshold)
+
+
 def analyze_iir(b, a, fs, worN=8000):
     """
     Analyze a digital IIR response and estimate ftype, f0, and Q.
@@ -88,10 +164,11 @@ def analyze_iir(b, a, fs, worN=8000):
     ):
         f0 = float(f[idx_peak])
         threshold = mag[idx_peak] - 3
-        left = np.flatnonzero(mag[:idx_peak] <= threshold)
-        right = np.flatnonzero(mag[idx_peak:] <= threshold)
-        f1 = float(f[left[-1]]) if left.size else None
-        f2 = float(f[idx_peak + right[0]]) if right.size else None
+        f1 = _last_upward_crossing(f, mag, threshold, idx_peak)
+        f2 = _first_downward_crossing(f, mag, threshold, idx_peak)
+        rbj_f0, rbj_q = _rbj_f0_q_from_denominator(a, fs)
+        if rbj_f0 is not None and rbj_q is not None:
+            return f, mag, "bandpass", rbj_f0, rbj_q
         return f, mag, "bandpass", f0, _estimate_q(f0, f1, f2)
 
     if (
@@ -99,11 +176,12 @@ def analyze_iir(b, a, fs, worN=8000):
         and min(mag0, mag_nyquist) - mag[idx_valley] > 3
     ):
         f0 = float(f[idx_valley])
-        threshold = mag[idx_valley] + 3
-        left = np.flatnonzero(mag[:idx_valley] >= threshold)
-        right = np.flatnonzero(mag[idx_valley:] >= threshold)
-        f1 = float(f[left[-1]]) if left.size else None
-        f2 = float(f[idx_valley + right[0]]) if right.size else None
+        threshold = min(mag0, mag_nyquist) - 3
+        f1 = _last_downward_crossing(f, mag, threshold, idx_valley)
+        f2 = _first_upward_crossing(f, mag, threshold, idx_valley)
+        rbj_f0, rbj_q = _rbj_f0_q_from_denominator(a, fs)
+        if rbj_f0 is not None and rbj_q is not None:
+            return f, mag, "notch", rbj_f0, rbj_q
         return f, mag, "notch", f0, _estimate_q(f0, f1, f2)
 
     if delta > 3:

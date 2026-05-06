@@ -134,9 +134,62 @@ class InferIIRTests(unittest.TestCase):
         self.assertEqual(inferred["order"], 0)
         self.assertFalse(inferred["designable"])
 
+    def test_low_high_cutoff_estimates_are_stable_across_parameters(self):
+        for ftype in ("lowpass", "highpass"):
+            for method in ("biquad", "butterworth"):
+                for f0 in (500, 1000, 5000, 10000):
+                    with self.subTest(ftype=ftype, method=method, f0=f0):
+                        params = {
+                            "ftype": ftype,
+                            "f0": f0,
+                            "Q": 0.707 if method == "biquad" else None,
+                            "order": 2 if method == "biquad" else 4,
+                            "method": method,
+                        }
+                        b, a = design_iir(params, fs=FS)
+                        inferred = infer_iir_params(b, a, FS)
+
+                        self.assertEqual(inferred["ftype"], ftype)
+                        self.assert_relative_error(inferred["f0"], f0, 0.005)
+
+    def test_rbj_band_features_are_recovered_from_coefficients(self):
+        for ftype in ("bandpass", "notch"):
+            for f0 in (500, 1000, 5000, 10000):
+                for q in (2, 5, 10):
+                    with self.subTest(ftype=ftype, f0=f0, q=q):
+                        b, a = design_iir(
+                            {"ftype": ftype, "f0": f0, "Q": q, "order": 2, "method": "biquad"},
+                            fs=FS,
+                        )
+                        inferred = infer_iir_params(b, a, FS)
+
+                        self.assertEqual(inferred["ftype"], ftype)
+                        self.assert_relative_error(inferred["f0"], f0, 1e-9)
+                        self.assert_relative_error(inferred["Q"], q, 1e-9)
+
+    def test_butterworth_band_features_are_estimated_across_parameters(self):
+        for ftype in ("bandpass", "notch"):
+            for f0 in (500, 1000, 5000, 10000):
+                for q in (2, 5, 10):
+                    with self.subTest(ftype=ftype, f0=f0, q=q):
+                        b, a = design_iir(
+                            {"ftype": ftype, "f0": f0, "Q": q, "order": 4, "method": "butterworth"},
+                            fs=FS,
+                        )
+                        inferred = infer_iir_params(b, a, FS)
+
+                        self.assertEqual(inferred["ftype"], ftype)
+                        self.assert_relative_error(inferred["f0"], f0, 0.07)
+                        self.assert_relative_error(inferred["Q"], q, 0.30)
+
     def assert_finite_coefficients(self, b, a):
         self.assertTrue(np.all(np.isfinite(b)))
         self.assertTrue(np.all(np.isfinite(a)))
+
+    def assert_relative_error(self, actual, expected, tolerance):
+        self.assertIsNotNone(actual)
+        error = abs(actual - expected) / expected
+        self.assertLessEqual(error, tolerance)
 
 
 if __name__ == "__main__":
