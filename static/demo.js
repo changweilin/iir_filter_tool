@@ -9,19 +9,7 @@ const DEFAULT_DESIGN_PARAMS = {
   rs: null,
 };
 
-function parseDemoCases() {
-  try {
-    const data = JSON.parse(document.querySelector("#demo-data")?.textContent || "[]");
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-const demoCases = parseDemoCases();
-
 const demoState = {
-  index: 0,
   designCoefficients: null,
   designResponse: null,
   inferenceInferred: null,
@@ -37,7 +25,6 @@ const inferenceChart = document.querySelector("#inference-response-chart");
 const inferenceResponsePointsInput = document.querySelector("#inference-response-points");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
-const presetList = document.querySelector("#preset-list");
 let autoDesignTimer = null;
 let autoDesignPending = false;
 let autoInferTimer = null;
@@ -204,18 +191,6 @@ function renderSummary(inferred) {
   });
 }
 
-function renderPresetButtons() {
-  presetList.innerHTML = "";
-  demoCases.forEach((demoCase, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "preset-button";
-    button.innerHTML = `<strong>${demoCase.title}</strong><span>${demoCase.description}</span>`;
-    button.addEventListener("click", () => renderCase(index));
-    presetList.appendChild(button);
-  });
-}
-
 function setFormValues(params) {
   ["ftype", "method", "fs", "f0", "Q", "order", "rp", "rs"].forEach((field) => {
     if (designForm.elements[field]) {
@@ -320,30 +295,6 @@ function scheduleAutoInfer() {
   autoInferPending = false;
   clearTimeout(autoInferTimer);
   autoInferTimer = setTimeout(runInfer, 450);
-}
-
-function renderCase(index) {
-  if (!demoCases.length) {
-    setFormValues(DEFAULT_DESIGN_PARAMS);
-    applyMethodDefaults();
-    return;
-  }
-
-  demoState.index = index;
-  const demoCase = demoCases[index];
-  setFormValues(demoCase.params);
-  designResponsePointsInput.value = "1024";
-  applyMethodDefaults();
-  renderDesignResult({
-    b: demoCase.b,
-    a: demoCase.a,
-    response: demoCase.response,
-  });
-  setStatus(demoState.ready ? demoCase.title : "Loading Python", demoState.ready ? "ready" : "working");
-
-  [...presetList.children].forEach((button, buttonIndex) => {
-    button.classList.toggle("is-active", buttonIndex === index);
-  });
 }
 
 function renderDesignResult(data) {
@@ -506,7 +457,6 @@ async function runDesign() {
     const result = demoState.pyodide.globals.get("py_design")(JSON.stringify(currentDesignParams()));
     renderDesignResult(JSON.parse(result));
     setStatus("Designed");
-    [...presetList.children].forEach((button) => button.classList.remove("is-active"));
   } catch (error) {
     setStatus(error.message, "error");
     setBusy(false);
@@ -532,7 +482,6 @@ async function pasteDesignJson() {
     const parsed = JSON.parse(text);
     applyDesignParameters(parsed.inferred || parsed);
     applyMethodDefaults();
-    [...presetList.children].forEach((button) => button.classList.remove("is-active"));
     setStatus("Pasted JSON");
     scheduleAutoDesign();
   } catch (error) {
@@ -682,14 +631,9 @@ window.addEventListener("resize", () => {
   }
 });
 
-renderPresetButtons();
-if (demoCases.length) {
-  renderCase(0);
-} else {
-  setFormValues(DEFAULT_DESIGN_PARAMS);
-  applyMethodDefaults();
-  setStatus("Loading Python", "working");
-}
+setFormValues(DEFAULT_DESIGN_PARAMS);
+applyMethodDefaults();
+setStatus("Loading Python", "working");
 drawChart(inferenceChart, null);
 setBusy(true);
 initPyodideRuntime().catch((error) => {

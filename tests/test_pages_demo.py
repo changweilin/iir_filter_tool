@@ -1,10 +1,8 @@
-import json
-import re
 import shutil
 import unittest
 from pathlib import Path
 
-from scripts.build_pages_demo import DEMO_CASES, build_site
+from scripts.build_pages_demo import build_site
 
 
 class PagesDemoTests(unittest.TestCase):
@@ -38,38 +36,24 @@ class PagesDemoTests(unittest.TestCase):
         self.assertIn('id="paste-design-json"', html)
         self.assertIn('id="copy-inferred-json"', html)
         self.assertIn('id="copy-text"', html)
-        self.assertIn('id="b-list" class="coeff-list" start="0"', html)
+        self.assertIn('id="copy-json"', html)
+        self.assertIn('id="b-list" class="coeff-list"', html)
+        self.assertIn('id="a-list" class="coeff-list"', html)
+        self.assertNotIn('start="0"', html)
         self.assertIn('name="coefficients"', html)
         self.assertNotIn('id="design-submit"', html)
         self.assertNotIn('id="infer-submit"', html)
         self.assertNotIn('id="apply-inferred"', html)
+        self.assertNotIn('id="preset-list"', html)
+        self.assertNotIn('id="demo-data"', html)
+        self.assertNotIn("Biquad Bandpass", html)
+        self.assertNotIn("Butterworth Lowpass", html)
+        self.assertNotIn("Elliptic Notch", html)
         self.assertNotIn('input name="ftype" readonly', html)
         self.assertIn("pyodide/v0.29.3/full/pyodide.js", html)
         self.assertIn('script id="design-source"', html)
         self.assertIn('script id="infer-source"', html)
         self.assertIn("static/demo.js", html)
-
-    def test_demo_data_contains_response_and_coefficients(self):
-        output = build_site(self.output_dir)
-        html = (output / "index.html").read_text(encoding="utf-8")
-        match = re.search(
-            r'<script id="demo-data" type="application/json">(.*?)</script>',
-            html,
-            re.S,
-        )
-        self.assertIsNotNone(match)
-
-        data = json.loads(match.group(1))
-        self.assertEqual(len(data), len(DEMO_CASES))
-        for demo_case in data:
-            with self.subTest(case=demo_case["id"]):
-                self.assertIn("b", demo_case)
-                self.assertIn("a", demo_case)
-                self.assertGreater(len(demo_case["b"]), 0)
-                self.assertGreater(len(demo_case["a"]), 0)
-                self.assertEqual(len(demo_case["response"]["frequency_hz"]), 1024)
-                self.assertEqual(len(demo_case["response"]["magnitude_db"]), 1024)
-                self.assertNotIn("inferred", demo_case)
 
 
 if __name__ == "__main__":

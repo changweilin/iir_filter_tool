@@ -165,12 +165,6 @@ h3 {
   gap: 8px;
 }
 
-.json-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin: 16px 0 8px;
-}
-
 .points-control {
   display: flex;
   align-items: center;
@@ -268,40 +262,6 @@ button:disabled {
   background: #eef8f9;
 }
 
-.preset-list {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.preset-button {
-  display: grid;
-  min-height: 0;
-  width: 100%;
-  border-color: var(--line);
-  padding: 10px 12px;
-  color: var(--ink);
-  background: #fbfcfd;
-  text-align: left;
-}
-
-.preset-button strong {
-  font-size: 13px;
-}
-
-.preset-button span {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.preset-button.is-active {
-  border-color: #74b9c0;
-  background: #eef8f9;
-}
-
 .chart-wrap {
   position: relative;
   width: 100%;
@@ -325,9 +285,9 @@ canvas {
 }
 
 .coeff-list {
-  min-height: 116px;
   margin: 0;
-  padding-left: 22px;
+  padding-left: 0;
+  list-style: none;
   color: var(--ink);
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
@@ -347,10 +307,6 @@ canvas {
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.json-toolbar + .json-block {
-  margin-top: 0;
 }
 
 .summary-list {

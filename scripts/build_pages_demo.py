@@ -1,68 +1,9 @@
 import argparse
-import json
 import shutil
-import sys
 from pathlib import Path
-
-import numpy as np
-from scipy.signal import freqz
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
-
-from iir_filter import design_iir
-
-
-RESPONSE_POINTS = 1024
-
-DEMO_CASES = [
-    {
-        "id": "biquad-bandpass",
-        "title": "Biquad Bandpass",
-        "description": "RBJ biquad bandpass centered at 1 kHz.",
-        "params": {
-            "ftype": "bandpass",
-            "method": "biquad",
-            "fs": 48000,
-            "f0": 1000,
-            "Q": 5,
-            "order": 2,
-            "rp": None,
-            "rs": None,
-        },
-    },
-    {
-        "id": "butter-lowpass",
-        "title": "Butterworth Lowpass",
-        "description": "Fourth-order lowpass with a 2 kHz cutoff.",
-        "params": {
-            "ftype": "lowpass",
-            "method": "butterworth",
-            "fs": 48000,
-            "f0": 2000,
-            "Q": None,
-            "order": 4,
-            "rp": None,
-            "rs": None,
-        },
-    },
-    {
-        "id": "elliptic-notch",
-        "title": "Elliptic Notch",
-        "description": "Narrow 60 Hz rejection example using an elliptic design.",
-        "params": {
-            "ftype": "notch",
-            "method": "elliptic",
-            "fs": 48000,
-            "f0": 60,
-            "Q": 12,
-            "order": 2,
-            "rp": 1,
-            "rs": 45,
-        },
-    },
-]
 
 
 def build_site(output_dir):
@@ -74,8 +15,7 @@ def build_site(output_dir):
     shutil.copy2(REPO_ROOT / "static" / "styles.css", static_path / "styles.css")
     shutil.copy2(REPO_ROOT / "static" / "demo.js", static_path / "demo.js")
 
-    cases = [_build_case(case) for case in DEMO_CASES]
-    (output_path / "index.html").write_text(_render_html(cases), encoding="utf-8")
+    (output_path / "index.html").write_text(_render_html(), encoding="utf-8")
     return output_path
 
 
@@ -88,54 +28,7 @@ def _prepare_output_dir(output_path):
             child.unlink()
 
 
-def _build_case(case):
-    params = case["params"].copy()
-    b, a = design_iir(params, fs=params["fs"])
-
-    return {
-        "id": case["id"],
-        "title": case["title"],
-        "description": case["description"],
-        "params": _json_safe(params),
-        "b": _json_safe(b),
-        "a": _json_safe(a),
-        "response": _frequency_response(b, a, params["fs"]),
-    }
-
-
-def _frequency_response(b, a, fs):
-    f, h = freqz(b, a, worN=RESPONSE_POINTS, fs=fs)
-    magnitude = np.maximum(np.abs(h), np.finfo(float).tiny)
-    magnitude_db = 20 * np.log10(magnitude)
-    return {
-        "frequency_hz": _json_safe(f),
-        "magnitude_db": _json_safe(magnitude_db),
-    }
-
-
-def _json_safe(value):
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, np.ndarray):
-        return [_json_safe(item) for item in value.tolist()]
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, np.generic):
-        return _json_safe(value.item())
-    if isinstance(value, complex):
-        return {"real": _json_safe(value.real), "imag": _json_safe(value.imag)}
-    if isinstance(value, bool) or value is None:
-        return value
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return value if np.isfinite(value) else None
-    return value
-
-
-def _render_html(cases):
-    data = json.dumps(cases, ensure_ascii=False, separators=(",", ":"))
-    data = data.replace("</", "<\\/")
+def _render_html():
     design_source = _script_safe_text((REPO_ROOT / "iir_filter" / "design.py").read_text(encoding="utf-8"))
     infer_source = _script_safe_text((REPO_ROOT / "iir_filter" / "infer.py").read_text(encoding="utf-8"))
     return f"""<!doctype html>
@@ -163,7 +56,6 @@ def _render_html(cases):
             <button id="paste-design-json" class="ghost-button" type="button">Paste JSON</button>
           </div>
         </div>
-        <div id="preset-list" class="preset-list"></div>
 
         <form id="design-form" class="form-grid">
           <label>
@@ -231,20 +123,18 @@ def _render_html(cases):
           <h2 id="coefficients-heading">Design Coefficients</h2>
           <div class="button-group" aria-label="Coefficient copy actions">
             <button id="copy-text" class="ghost-button" type="button">Copy Text</button>
+            <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
           </div>
         </div>
         <div class="coeff-columns">
           <div>
             <h3>b</h3>
-            <ol id="b-list" class="coeff-list" start="0"></ol>
+            <ul id="b-list" class="coeff-list"></ul>
           </div>
           <div>
             <h3>a</h3>
-            <ol id="a-list" class="coeff-list" start="0"></ol>
+            <ul id="a-list" class="coeff-list"></ul>
           </div>
-        </div>
-        <div class="json-toolbar" aria-label="Coefficient JSON actions">
-          <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <pre id="coeff-json" class="json-block">{{}}</pre>
       </section>
@@ -288,7 +178,6 @@ def _render_html(cases):
       </section>
     </main>
 
-    <script id="demo-data" type="application/json">{data}</script>
     <script id="design-source" type="text/plain">{design_source}</script>
     <script id="infer-source" type="text/plain">{infer_source}</script>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
