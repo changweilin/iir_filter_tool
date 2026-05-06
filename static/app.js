@@ -11,9 +11,9 @@ const state = {
 
 const statusEl = document.querySelector("#status");
 const designChart = document.querySelector("#response-chart");
-const designChartMeta = document.querySelector("#chart-meta");
+const designResponsePointsInput = document.querySelector("#design-response-points");
 const inferenceChart = document.querySelector("#inference-response-chart");
-const inferenceChartMeta = document.querySelector("#inference-chart-meta");
+const inferenceResponsePointsInput = document.querySelector("#inference-response-points");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
 let autoInferTimer = null;
@@ -44,6 +44,7 @@ function designPayload() {
     order: numberOrNull(data.get("order")),
     rp: numberOrNull(data.get("rp")),
     rs: numberOrNull(data.get("rs")),
+    response_points: responsePoints(designResponsePointsInput.value),
   };
 }
 
@@ -54,6 +55,7 @@ function inferPayload() {
     b: coefficients.b,
     a: coefficients.a,
     fs: numberOrNull(data.get("fs")),
+    response_points: responsePoints(inferenceResponsePointsInput.value),
   };
 }
 
@@ -119,6 +121,14 @@ function parseCoefficientText(text) {
     b: values.slice(0, splitIndex),
     a: values.slice(splitIndex),
   };
+}
+
+function responsePoints(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 2 || parsed > 65536) {
+    throw new Error("Response points must be an integer between 2 and 65536");
+  }
+  return parsed;
 }
 
 function coefficientText(coefficients) {
@@ -242,7 +252,7 @@ function renderDesignResult(data) {
 
   if (data.response) {
     state.design.response = data.response;
-    drawChart(designChart, designChartMeta, data.response);
+    drawChart(designChart, data.response);
   }
 }
 
@@ -255,11 +265,11 @@ function renderInferenceResult(data) {
 
   if (data.response) {
     state.inference.response = data.response;
-    drawChart(inferenceChart, inferenceChartMeta, data.response);
+    drawChart(inferenceChart, data.response);
   }
 }
 
-function drawChart(canvas, metaEl, response) {
+function drawChart(canvas, response) {
   const frequencies = response?.frequency_hz || [];
   const magnitudes = response?.magnitude_db || [];
   const ctx = canvas.getContext("2d");
@@ -276,7 +286,6 @@ function drawChart(canvas, metaEl, response) {
   ctx.fillRect(0, 0, width, height);
 
   if (!frequencies.length || !magnitudes.length) {
-    metaEl.textContent = "0 points";
     return;
   }
 
@@ -343,7 +352,6 @@ function drawChart(canvas, metaEl, response) {
   ctx.strokeStyle = "#006d77";
   ctx.lineWidth = 2;
   ctx.strokeRect(padding.left, padding.top, plotWidth, plotHeight);
-  metaEl.textContent = `${frequencies.length} points`;
 }
 
 async function runDesign() {
@@ -371,6 +379,7 @@ function scheduleAutoInfer() {
 
 document.querySelector("#design-submit").addEventListener("click", runDesign);
 document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
+designResponsePointsInput.addEventListener("change", runDesign);
 document.querySelector("#copy-json").addEventListener("click", async () => {
   if (!state.design.coefficients) {
     return;
@@ -395,15 +404,17 @@ document.querySelector("#copy-inferred-json").addEventListener("click", async ()
 });
 inferForm.addEventListener("input", scheduleAutoInfer);
 inferForm.addEventListener("change", scheduleAutoInfer);
+inferenceResponsePointsInput.addEventListener("input", scheduleAutoInfer);
+inferenceResponsePointsInput.addEventListener("change", scheduleAutoInfer);
 window.addEventListener("resize", () => {
   if (state.design.response) {
-    drawChart(designChart, designChartMeta, state.design.response);
+    drawChart(designChart, state.design.response);
   }
   if (state.inference.response) {
-    drawChart(inferenceChart, inferenceChartMeta, state.inference.response);
+    drawChart(inferenceChart, state.inference.response);
   }
 });
 
-drawChart(inferenceChart, inferenceChartMeta, null);
+drawChart(inferenceChart, null);
 runDesign();
 scheduleAutoInfer();

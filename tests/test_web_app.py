@@ -33,6 +33,25 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(len(data["response"]["magnitude_db"]), 1024)
         self.assertNotIn("inferred", data)
 
+    def test_design_accepts_custom_response_points(self):
+        response = self.client.post(
+            "/api/design",
+            json={
+                "ftype": "bandpass",
+                "method": "biquad",
+                "fs": 48000,
+                "f0": 1000,
+                "Q": 5,
+                "order": 2,
+                "response_points": 256,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(len(data["response"]["frequency_hz"]), 256)
+        self.assertEqual(len(data["response"]["magnitude_db"]), 256)
+
     def test_design_rejects_frequency_at_or_above_nyquist(self):
         response = self.client.post(
             "/api/design",
@@ -68,6 +87,7 @@ class WebAppTests(unittest.TestCase):
                 "b": coefficients["b"],
                 "a": coefficients["a"],
                 "fs": 48000,
+                "response_points": 512,
             },
         )
 
@@ -77,8 +97,8 @@ class WebAppTests(unittest.TestCase):
         self.assertAlmostEqual(inferred["f0"], 1000, delta=10)
         self.assertEqual(inferred["order"], 2)
         self.assertIn("designable", inferred)
-        self.assertEqual(len(response.get_json()["response"]["frequency_hz"]), 1024)
-        self.assertEqual(len(response.get_json()["response"]["magnitude_db"]), 1024)
+        self.assertEqual(len(response.get_json()["response"]["frequency_hz"]), 512)
+        self.assertEqual(len(response.get_json()["response"]["magnitude_db"]), 512)
 
     def test_json_safe_serializes_numpy_and_complex_values(self):
         safe = _json_safe(

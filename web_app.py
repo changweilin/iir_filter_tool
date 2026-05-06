@@ -12,6 +12,7 @@ from iir_filter import design_iir, infer_iir_params
 
 DEFAULT_FS = 48000
 RESPONSE_POINTS = 1024
+MAX_RESPONSE_POINTS = 65536
 
 
 def create_app():
@@ -27,12 +28,13 @@ def create_app():
             payload = request.get_json(silent=True) or {}
             params = _parse_design_payload(payload)
             fs = params["fs"]
+            response_points = _response_points(payload)
             b, a = design_iir(params, fs=fs)
             return jsonify(
                 {
                     "b": _json_safe(b),
                     "a": _json_safe(a),
-                    "response": _frequency_response(b, a, fs),
+                    "response": _frequency_response(b, a, fs, response_points),
                 }
             )
         except (TypeError, ValueError, KeyError) as exc:
@@ -43,13 +45,14 @@ def create_app():
         try:
             payload = request.get_json(silent=True) or {}
             fs = _positive_float(payload.get("fs", DEFAULT_FS), "fs")
+            response_points = _response_points(payload)
             b = _parse_coefficients(payload.get("b"), "b")
             a = _parse_coefficients(payload.get("a"), "a")
             inferred = infer_iir_params(b, a, fs)
             return jsonify(
                 {
                     "inferred": _json_safe(inferred),
-                    "response": _frequency_response(b, a, fs),
+                    "response": _frequency_response(b, a, fs, response_points),
                 }
             )
         except (TypeError, ValueError, KeyError) as exc:
@@ -110,6 +113,14 @@ def _positive_int(value, name):
     return parsed
 
 
+def _response_points(payload):
+    value = payload.get("response_points", RESPONSE_POINTS)
+    points = _positive_int(value, "response_points")
+    if points < 2 or points > MAX_RESPONSE_POINTS:
+        raise ValueError(f"response_points must be between 2 and {MAX_RESPONSE_POINTS}")
+    return points
+
+
 def _parse_coefficients(value, name):
     if value in ("", None):
         raise ValueError(f"Missing required field: {name}")
@@ -135,8 +146,8 @@ def _parse_coefficients(value, name):
     return coefficients
 
 
-def _frequency_response(b, a, fs):
-    f, h = freqz(b, a, worN=RESPONSE_POINTS, fs=fs)
+def _frequency_response(b, a, fs, points=RESPONSE_POINTS):
+    f, h = freqz(b, a, worN=points, fs=fs)
     magnitude = np.maximum(np.abs(h), np.finfo(float).tiny)
     magnitude_db = 20 * np.log10(magnitude)
     return {

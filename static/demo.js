@@ -32,13 +32,12 @@ const demoState = {
 
 const statusEl = document.querySelector("#status");
 const designChart = document.querySelector("#response-chart");
-const designChartMeta = document.querySelector("#chart-meta");
+const designResponsePointsInput = document.querySelector("#design-response-points");
 const inferenceChart = document.querySelector("#inference-response-chart");
-const inferenceChartMeta = document.querySelector("#inference-chart-meta");
+const inferenceResponsePointsInput = document.querySelector("#inference-response-points");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
 const presetList = document.querySelector("#preset-list");
-const autoUpdateIndicator = document.querySelector("#auto-update-indicator");
 let autoDesignTimer = null;
 let autoDesignPending = false;
 let autoInferTimer = null;
@@ -52,7 +51,7 @@ function setStatus(message, mode = "ready") {
 }
 
 function setBusy(isBusy) {
-  autoUpdateIndicator.textContent = demoState.ready ? (isBusy ? "Updating" : "Auto updates") : "Loading engine";
+  document.body.classList.toggle("is-busy", isBusy);
 }
 
 function formatNumber(value) {
@@ -172,6 +171,14 @@ function positiveInteger(value, name) {
   return parsed;
 }
 
+function responsePoints(input) {
+  const points = positiveInteger(input.value, "response_points");
+  if (points < 2 || points > 65536) {
+    throw new Error("response_points must be between 2 and 65536");
+  }
+  return points;
+}
+
 function renderList(selector, values) {
   const list = document.querySelector(selector);
   list.innerHTML = "";
@@ -258,6 +265,7 @@ function currentDesignParams() {
     order: positiveInteger(data.get("order"), "order"),
     rp: numberOrNull(data.get("rp")),
     rs: numberOrNull(data.get("rs")),
+    response_points: responsePoints(designResponsePointsInput),
   };
 }
 
@@ -267,6 +275,7 @@ function currentInferPayload() {
     b: coefficients.b,
     a: coefficients.a,
     fs: positiveNumber(inferForm.elements.fs.value, "fs"),
+    response_points: responsePoints(inferenceResponsePointsInput),
   };
 }
 
@@ -323,6 +332,7 @@ function renderCase(index) {
   demoState.index = index;
   const demoCase = demoCases[index];
   setFormValues(demoCase.params);
+  designResponsePointsInput.value = "1024";
   applyMethodDefaults();
   renderDesignResult({
     b: demoCase.b,
@@ -346,7 +356,7 @@ function renderDesignResult(data) {
 
   if (data.response) {
     demoState.designResponse = data.response;
-    drawChart(designChart, designChartMeta, data.response);
+    drawChart(designChart, data.response);
   }
 
   setBusy(false);
@@ -361,7 +371,7 @@ function renderInferenceResult(data) {
 
   if (data.response) {
     demoState.inferenceResponse = data.response;
-    drawChart(inferenceChart, inferenceChartMeta, data.response);
+    drawChart(inferenceChart, data.response);
   }
 
   setBusy(false);
@@ -418,10 +428,10 @@ def _json_safe(value):
         return value if np.isfinite(value) else None
     return value
 
-def _frequency_response(b, a, fs):
+def _frequency_response(b, a, fs, points=1024):
     import numpy as np
     from scipy.signal import freqz
-    f, h = freqz(b, a, worN=1024, fs=fs)
+    f, h = freqz(b, a, worN=points, fs=fs)
     magnitude = np.maximum(np.abs(h), np.finfo(float).tiny)
     magnitude_db = 20 * np.log10(magnitude)
     return {
@@ -447,25 +457,33 @@ def _parse_coefficients(value, name):
         raise ValueError(f"{name} coefficients must be finite")
     return coefficients
 
+def _response_points(value):
+    points = int(value if value is not None else 1024)
+    if points < 2 or points > 65536:
+        raise ValueError("response_points must be between 2 and 65536")
+    return points
+
 def py_design(payload_json):
     payload = json.loads(payload_json)
     fs = float(payload.get("fs", 48000))
+    response_points = _response_points(payload.get("response_points"))
     b, a = design_iir(payload, fs=fs)
     return json.dumps(_json_safe({
         "b": b,
         "a": a,
-        "response": _frequency_response(b, a, fs),
+        "response": _frequency_response(b, a, fs, response_points),
     }))
 
 def py_infer(payload_json):
     payload = json.loads(payload_json)
     fs = float(payload.get("fs", 48000))
+    response_points = _response_points(payload.get("response_points"))
     b = _parse_coefficients(payload.get("b"), "b")
     a = _parse_coefficients(payload.get("a"), "a")
     inferred = infer_iir_params(b, a, fs)
     return json.dumps(_json_safe({
         "inferred": inferred,
-        "response": _frequency_response(b, a, fs),
+        "response": _frequency_response(b, a, fs, response_points),
     }))
 `);
 
@@ -522,7 +540,7 @@ async function pasteDesignJson() {
   }
 }
 
-function drawChart(canvas, metaEl, response) {
+function drawChart(canvas, response) {
   const frequencies = response?.frequency_hz || [];
   const magnitudes = response?.magnitude_db || [];
   const ctx = canvas.getContext("2d");
@@ -539,7 +557,6 @@ function drawChart(canvas, metaEl, response) {
   ctx.fillRect(0, 0, width, height);
 
   if (!frequencies.length || !magnitudes.length) {
-    metaEl.textContent = "0 points";
     return;
   }
 
@@ -606,7 +623,6 @@ function drawChart(canvas, metaEl, response) {
   ctx.strokeStyle = "#006d77";
   ctx.lineWidth = 2;
   ctx.strokeRect(padding.left, padding.top, plotWidth, plotHeight);
-  metaEl.textContent = `${frequencies.length} points`;
 }
 
 designForm.addEventListener("input", (event) => {
@@ -650,15 +666,19 @@ document.querySelector("#copy-inferred-json").addEventListener("click", async ()
 
 document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
 
+designResponsePointsInput.addEventListener("input", scheduleAutoDesign);
+designResponsePointsInput.addEventListener("change", scheduleAutoDesign);
 inferForm.addEventListener("input", scheduleAutoInfer);
 inferForm.addEventListener("change", scheduleAutoInfer);
+inferenceResponsePointsInput.addEventListener("input", scheduleAutoInfer);
+inferenceResponsePointsInput.addEventListener("change", scheduleAutoInfer);
 
 window.addEventListener("resize", () => {
   if (demoState.designResponse) {
-    drawChart(designChart, designChartMeta, demoState.designResponse);
+    drawChart(designChart, demoState.designResponse);
   }
   if (demoState.inferenceResponse) {
-    drawChart(inferenceChart, inferenceChartMeta, demoState.inferenceResponse);
+    drawChart(inferenceChart, demoState.inferenceResponse);
   }
 });
 
@@ -670,7 +690,7 @@ if (demoCases.length) {
   applyMethodDefaults();
   setStatus("Loading Python", "working");
 }
-drawChart(inferenceChart, inferenceChartMeta, null);
+drawChart(inferenceChart, null);
 setBusy(true);
 initPyodideRuntime().catch((error) => {
   demoState.ready = false;

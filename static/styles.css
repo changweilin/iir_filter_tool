@@ -171,9 +171,20 @@ h3 {
   margin: 16px 0 8px;
 }
 
-.meta {
-  color: var(--muted);
-  font-size: 13px;
+.points-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+}
+
+.points-control span {
+  white-space: nowrap;
+}
+
+.points-control input {
+  width: 96px;
+  min-height: 34px;
 }
 
 .form-grid,
@@ -427,6 +438,15 @@ canvas {
 
   .button-group {
     flex-direction: column;
+  }
+
+  .points-control {
+    width: 100%;
+  }
+
+  .points-control input {
+    flex: 1;
+    width: auto;
   }
 
   button {

@@ -161,7 +161,6 @@ def _render_html(cases):
           <h2 id="design-heading">Design Parameters</h2>
           <div class="button-group" aria-label="Design parameter actions">
             <button id="paste-design-json" class="ghost-button" type="button">Paste JSON</button>
-            <span id="auto-update-indicator" class="meta">Auto updates</span>
           </div>
         </div>
         <div id="preset-list" class="preset-list"></div>
@@ -216,17 +215,20 @@ def _render_html(cases):
 
       <section class="panel chart-panel" aria-labelledby="response-heading">
         <div class="section-title">
-          <h2 id="response-heading">Magnitude Response</h2>
-          <span id="chart-meta" class="meta">0 points</span>
+          <h2 id="response-heading">Design Response</h2>
+          <label class="points-control">
+            <span>Points</span>
+            <input id="design-response-points" name="design_response_points" type="number" min="2" max="65536" step="1" value="1024">
+          </label>
         </div>
         <div class="chart-wrap">
-          <canvas id="response-chart" width="960" height="420" aria-label="Magnitude response chart"></canvas>
+          <canvas id="response-chart" width="960" height="420" aria-label="Design response chart"></canvas>
         </div>
       </section>
 
       <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
         <div class="section-title">
-          <h2 id="coefficients-heading">Coefficients</h2>
+          <h2 id="coefficients-heading">Design Coefficients</h2>
           <div class="button-group" aria-label="Coefficient copy actions">
             <button id="copy-text" class="ghost-button" type="button">Copy Text</button>
           </div>
@@ -249,7 +251,7 @@ def _render_html(cases):
 
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
-          <h2 id="infer-heading">Coefficient Inference</h2>
+          <h2 id="infer-heading">Inference Coefficient</h2>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
@@ -265,7 +267,7 @@ def _render_html(cases):
 
       <section class="panel inferred-panel" aria-labelledby="inferred-heading">
         <div class="section-title">
-          <h2 id="inferred-heading">Inferred Result</h2>
+          <h2 id="inferred-heading">Inference Parameters</h2>
           <button id="copy-inferred-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <dl id="inferred-summary" class="summary-list"></dl>
@@ -275,7 +277,10 @@ def _render_html(cases):
       <section class="panel inference-response-panel" aria-labelledby="inference-response-heading">
         <div class="section-title">
           <h2 id="inference-response-heading">Inference Response</h2>
-          <span id="inference-chart-meta" class="meta">0 points</span>
+          <label class="points-control">
+            <span>Points</span>
+            <input id="inference-response-points" name="inference_response_points" type="number" min="2" max="65536" step="1" value="1024">
+          </label>
         </div>
         <div class="chart-wrap">
           <canvas id="inference-response-chart" width="960" height="420" aria-label="Inference response chart"></canvas>
