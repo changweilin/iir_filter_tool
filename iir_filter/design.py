@@ -21,6 +21,8 @@ _FTYPE_ALIASES = {
     "bandstop": "notch",
 }
 
+_BESSEL_NORMS = {"phase", "delay", "mag"}
+
 
 def _require_key(info, key):
     if key not in info:
@@ -46,6 +48,13 @@ def _normalize_method(method):
     normalized = _METHOD_ALIASES.get(str(method).lower())
     if normalized is None:
         raise ValueError(f"Unsupported design method: {method}")
+    return normalized
+
+
+def _normalize_bessel_norm(norm):
+    normalized = str(norm).lower()
+    if normalized not in _BESSEL_NORMS:
+        raise ValueError(f"Unsupported Bessel norm: {norm}")
     return normalized
 
 
@@ -128,6 +137,7 @@ def design_iir(info, fs=None):
             raise ValueError("rp and rs are required for elliptic design")
         return ellip(order, rp, rs, wn, btype=scipy_btype, analog=False)
     if method == "bessel":
-        return bessel(order, wn, btype=scipy_btype, analog=False)
+        bessel_norm = _normalize_bessel_norm(info.get("norm", "phase"))
+        return bessel(order, wn, btype=scipy_btype, analog=False, norm=bessel_norm)
 
     raise ValueError(f"Unsupported design method: {method}")

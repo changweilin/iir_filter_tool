@@ -82,6 +82,26 @@ class DesignIIRTests(unittest.TestCase):
         np.testing.assert_allclose(args[3], [0.19, 0.21])
         self.assertEqual(kwargs["btype"], "bandstop")
 
+    def test_bessel_norm_is_forwarded(self):
+        with patch(
+            "iir_filter.design.bessel",
+            return_value=(np.array([1.0]), np.array([1.0])),
+        ) as bessel_mock:
+            design_iir(
+                {"ftype": "lowpass", "f0": 1000, "order": 4, "method": "bessel", "norm": "mag"},
+                fs=FS,
+            )
+
+        _, kwargs = bessel_mock.call_args
+        self.assertEqual(kwargs["norm"], "mag")
+
+    def test_invalid_bessel_norm_is_rejected(self):
+        with self.assertRaises(ValueError):
+            design_iir(
+                {"ftype": "lowpass", "f0": 1000, "order": 4, "method": "bessel", "norm": "bad"},
+                fs=FS,
+            )
+
 
 class InferIIRTests(unittest.TestCase):
     def test_infer_biquad_bandpass_returns_complete_metadata(self):
@@ -98,7 +118,8 @@ class InferIIRTests(unittest.TestCase):
         self.assertGreater(inferred["Q"], 0)
         self.assertEqual(inferred["order"], 2)
         self.assertEqual(inferred["fs"], float(FS))
-        self.assertIn("designable", inferred)
+        self.assertEqual(inferred["method"], "biquad")
+        self.assertTrue(inferred["designable"])
 
     def test_infer_biquad_notch_does_not_crash(self):
         b, a = design_iir(
@@ -113,6 +134,8 @@ class InferIIRTests(unittest.TestCase):
         self.assertIsNotNone(inferred["Q"])
         self.assertGreater(inferred["Q"], 0)
         self.assertEqual(inferred["order"], 2)
+        self.assertEqual(inferred["method"], "biquad")
+        self.assertTrue(inferred["designable"])
 
     def test_inferred_result_is_guarded_before_redesign(self):
         b, a = design_iir(
@@ -151,6 +174,12 @@ class InferIIRTests(unittest.TestCase):
 
                         self.assertEqual(inferred["ftype"], ftype)
                         self.assert_relative_error(inferred["f0"], f0, 0.005)
+                        if method == "biquad":
+                            self.assertEqual(inferred["method"], "biquad")
+                            self.assertTrue(inferred["designable"])
+                        else:
+                            self.assertEqual(inferred["method"], "unknown")
+                            self.assertFalse(inferred["designable"])
 
     def test_rbj_band_features_are_recovered_from_coefficients(self):
         for ftype in ("bandpass", "notch"):
@@ -164,6 +193,8 @@ class InferIIRTests(unittest.TestCase):
                         inferred = infer_iir_params(b, a, FS)
 
                         self.assertEqual(inferred["ftype"], ftype)
+                        self.assertEqual(inferred["method"], "biquad")
+                        self.assertTrue(inferred["designable"])
                         self.assert_relative_error(inferred["f0"], f0, 1e-9)
                         self.assert_relative_error(inferred["Q"], q, 1e-9)
 
@@ -179,8 +210,31 @@ class InferIIRTests(unittest.TestCase):
                         inferred = infer_iir_params(b, a, FS)
 
                         self.assertEqual(inferred["ftype"], ftype)
+                        self.assertEqual(inferred["method"], "unknown")
+                        self.assertFalse(inferred["designable"])
                         self.assert_relative_error(inferred["f0"], f0, 0.07)
                         self.assert_relative_error(inferred["Q"], q, 0.30)
+
+    def test_scipy_prototype_filters_are_analysis_only(self):
+        methods = (
+            ("butterworth", {"order": 4}),
+            ("bessel", {"order": 4}),
+            ("bessel", {"order": 4, "norm": "mag"}),
+            ("cheby1", {"order": 4, "rp": 1}),
+            ("cheby2", {"order": 4, "rs": 40}),
+            ("elliptic", {"order": 4, "rp": 1, "rs": 40}),
+        )
+        for method, extra in methods:
+            for ftype in ("lowpass", "highpass", "bandpass", "notch"):
+                with self.subTest(method=method, ftype=ftype, extra=extra):
+                    params = {"ftype": ftype, "f0": 1000, "Q": 5, "method": method, **extra}
+                    if ftype in ("lowpass", "highpass"):
+                        params["Q"] = None
+                    b, a = design_iir(params, fs=FS)
+                    inferred = infer_iir_params(b, a, FS)
+
+                    self.assertEqual(inferred["method"], "unknown")
+                    self.assertFalse(inferred["designable"])
 
     def assert_finite_coefficients(self, b, a):
         self.assertTrue(np.all(np.isfinite(b)))

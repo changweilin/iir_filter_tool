@@ -89,6 +89,34 @@ def _rbj_f0_q_from_denominator(a, fs):
     return float(w0 * fs / (2 * np.pi)), q
 
 
+def _rbj_biquad_from_coefficients(b, a, fs):
+    b = np.asarray(b, dtype=float)
+    a = np.asarray(a, dtype=float)
+    if b.size != 3 or a.size != 3 or a[0] == 0:
+        return None
+
+    b = b / a[0]
+    a = a / a[0]
+    f0, q = _rbj_f0_q_from_denominator(a, fs)
+    if f0 is None or q is None:
+        return None
+
+    w0 = 2 * np.pi * f0 / fs
+    alpha = np.sin(w0) / (2 * q)
+    cosp = np.cos(w0)
+    a0 = 1 + alpha
+    candidates = {
+        "lowpass": np.array([(1 - cosp) / 2, 1 - cosp, (1 - cosp) / 2]) / a0,
+        "highpass": np.array([(1 + cosp) / 2, -(1 + cosp), (1 + cosp) / 2]) / a0,
+        "bandpass": np.array([alpha, 0, -alpha]) / a0,
+        "notch": np.array([1, -2 * cosp, 1]) / a0,
+    }
+    for ftype, candidate_b in candidates.items():
+        if np.allclose(b, candidate_b, rtol=1e-7, atol=1e-9):
+            return {"ftype": ftype, "f0": f0, "Q": q, "order": 2, "method": "biquad"}
+    return None
+
+
 def _interpolate_threshold(f_left, y_left, f_right, y_right, threshold):
     if y_right == y_left:
         return float(f_left)
@@ -152,6 +180,10 @@ def analyze_iir(b, a, fs, worN=8000):
     if f.size == 0:
         return f, mag, "unknown", None, None
 
+    rbj = _rbj_biquad_from_coefficients(b, a, fs)
+    if rbj is not None:
+        return f, mag, rbj["ftype"], rbj["f0"], rbj["Q"]
+
     mag0 = mag[0]
     mag_nyquist = mag[-1]
     idx_peak = int(np.argmax(mag))
@@ -166,9 +198,6 @@ def analyze_iir(b, a, fs, worN=8000):
         threshold = mag[idx_peak] - 3
         f1 = _last_upward_crossing(f, mag, threshold, idx_peak)
         f2 = _first_downward_crossing(f, mag, threshold, idx_peak)
-        rbj_f0, rbj_q = _rbj_f0_q_from_denominator(a, fs)
-        if rbj_f0 is not None and rbj_q is not None:
-            return f, mag, "bandpass", rbj_f0, rbj_q
         return f, mag, "bandpass", f0, _estimate_q(f0, f1, f2)
 
     if (
@@ -179,9 +208,6 @@ def analyze_iir(b, a, fs, worN=8000):
         threshold = min(mag0, mag_nyquist) - 3
         f1 = _last_downward_crossing(f, mag, threshold, idx_valley)
         f2 = _first_upward_crossing(f, mag, threshold, idx_valley)
-        rbj_f0, rbj_q = _rbj_f0_q_from_denominator(a, fs)
-        if rbj_f0 is not None and rbj_q is not None:
-            return f, mag, "notch", rbj_f0, rbj_q
         return f, mag, "notch", f0, _estimate_q(f0, f1, f2)
 
     if delta > 3:
@@ -260,22 +286,6 @@ def _estimate_group_delay_deviation(b, a, fs, f, ftype, f0, q):
     return _safe_range(gd_band)
 
 
-def _infer_method(rp, rs, gd_dev):
-    if rp is None or gd_dev is None:
-        return "unknown"
-    if rs is not None and (not np.isfinite(rs) or rs > 300):
-        return "unknown"
-    if rp < 0.1:
-        return "bessel" if gd_dev < 1 else "butterworth"
-    if rs is not None and rs < 1:
-        return "cheby1"
-    if rs is not None and rp < 0.1:
-        return "cheby2"
-    if rs is not None:
-        return "elliptic"
-    return "unknown"
-
-
 def infer_iir_params(b, a, fs):
     """
     Infer best-effort descriptive parameters from IIR coefficients.
@@ -297,9 +307,10 @@ def infer_iir_params(b, a, fs):
         zeros = np.array([])
         poles = np.array([])
 
-    method = _infer_method(rp, rs, gd_dev)
+    rbj = _rbj_biquad_from_coefficients(b, a, fs)
+    method = rbj["method"] if rbj is not None else "unknown"
     order = max(len(a) - 1, 0)
-    designable = ftype != "unknown" and f0 is not None and method != "unknown" and order > 0
+    designable = rbj is not None and ftype != "unknown" and f0 is not None and q is not None
 
     return {
         "ftype": ftype,
