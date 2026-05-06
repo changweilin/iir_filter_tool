@@ -149,6 +149,99 @@ h3 {
   grid-row: 2;
 }
 
+.about-panel {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  color: #f8fafb;
+  border-color: #172026;
+  background: #172026;
+}
+
+.about-panel .eyebrow {
+  color: #8cd6dc;
+}
+
+.about-copy {
+  min-width: 0;
+}
+
+.about-copy h2 {
+  margin-bottom: 12px;
+  font-size: clamp(22px, 3vw, 32px);
+}
+
+.about-quote {
+  display: grid;
+  gap: 6px;
+  max-width: 760px;
+  margin: 0;
+  color: #eef8f9;
+}
+
+.about-quote p {
+  margin-bottom: 0;
+  line-height: 1.55;
+}
+
+.about-quote cite {
+  color: #b8c7ce;
+  font-size: 14px;
+  font-style: normal;
+}
+
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid rgba(238, 248, 249, 0.28);
+  border-radius: 50%;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+.social-link:hover,
+.social-link:focus-visible {
+  color: #172026;
+  background: #8cd6dc;
+}
+
+.social-link:focus-visible {
+  outline: 3px solid rgba(140, 214, 220, 0.36);
+  outline-offset: 2px;
+}
+
+.social-link svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .section-title {
   display: flex;
   align-items: center;
@@ -350,7 +443,8 @@ canvas {
   .chart-panel,
   .infer-panel,
   .inferred-panel,
-  .inference-response-panel {
+  .inference-response-panel,
+  .about-panel {
     grid-column: auto;
     grid-row: auto;
   }
@@ -377,6 +471,10 @@ canvas {
 
   .inference-response-panel {
     order: 6;
+  }
+
+  .about-panel {
+    order: 7;
   }
 }
 
@@ -407,5 +505,15 @@ canvas {
 
   button {
     width: 100%;
+  }
+
+  .about-panel {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .social-links {
+    justify-content: flex-start;
   }
 }

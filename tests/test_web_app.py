@@ -10,6 +10,19 @@ class WebAppTests(unittest.TestCase):
         self.app = create_app()
         self.client = self.app.test_client()
 
+    def test_index_contains_about_me_section(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("About Me", html)
+        self.assertIn("Chang Wei Lin", html)
+        self.assertIn("我愛星空至深，無懼黑夜。", html)
+        self.assertIn("We have loved the stars too fondly to fear the dark.", html)
+        self.assertIn("https://github.com/changweilin", html)
+        self.assertIn("https://www.linkedin.com/in/wei-lin-chang-ba38049a/", html)
+        self.assertIn("https://changweilin.github.io/demo_link/", html)
+
     def test_design_biquad_bandpass_returns_coefficients_and_response(self):
         response = self.client.post(
             "/api/design",

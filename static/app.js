@@ -9,6 +9,7 @@ const state = {
   },
 };
 
+const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v2";
 const statusEl = document.querySelector("#status");
 const designChart = document.querySelector("#response-chart");
 const designResponsePointsInput = document.querySelector("#design-response-points");
@@ -131,6 +132,58 @@ function responsePoints(value) {
   return parsed;
 }
 
+function persistentControls() {
+  return [...designForm.elements, designResponsePointsInput, ...inferForm.elements, inferenceResponsePointsInput].filter(
+    (control) => control?.name,
+  );
+}
+
+function controlStorageKey(control) {
+  const formId = control.closest("form")?.id;
+  return formId ? `${formId}:${control.name}` : control.id || control.name;
+}
+
+function savedControlValues() {
+  try {
+    const stored = window.localStorage.getItem(FORM_STORAGE_KEY);
+    const values = stored ? JSON.parse(stored) : null;
+    return values && typeof values === "object" && !Array.isArray(values) ? values : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistControlValues() {
+  try {
+    const values = {};
+    persistentControls().forEach((control) => {
+      values[controlStorageKey(control)] = control.value;
+    });
+    window.localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(values));
+  } catch {
+    // Some embedded or file previews can block localStorage.
+  }
+}
+
+function restoreControlValues() {
+  const values = savedControlValues();
+  if (!values) {
+    return;
+  }
+
+  persistentControls().forEach((control) => {
+    const key = controlStorageKey(control);
+    if (!Object.hasOwn(values, key)) {
+      return;
+    }
+    try {
+      setControlValue(control, values[key], control.name);
+    } catch {
+      // Ignore stale saved select options from an older app version.
+    }
+  });
+}
+
 function coefficientText(coefficients) {
   return [...coefficients.b, ...coefficients.a].map(formatNumber).join(",");
 }
@@ -210,6 +263,7 @@ async function pasteDesignJson() {
     const text = await readClipboardText(lastCopiedInferredJson);
     const parsed = JSON.parse(text);
     applyDesignParameters(parsed.inferred || parsed);
+    persistControlValues();
     setStatus("Pasted JSON");
     await runDesign();
   } catch (error) {
@@ -379,7 +433,13 @@ function scheduleAutoInfer() {
 
 document.querySelector("#design-submit").addEventListener("click", runDesign);
 document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
-designResponsePointsInput.addEventListener("change", runDesign);
+designForm.addEventListener("input", persistControlValues);
+designForm.addEventListener("change", persistControlValues);
+designResponsePointsInput.addEventListener("input", persistControlValues);
+designResponsePointsInput.addEventListener("change", () => {
+  persistControlValues();
+  runDesign();
+});
 document.querySelector("#copy-json").addEventListener("click", async () => {
   if (!state.design.coefficients) {
     return;
@@ -404,8 +464,16 @@ document.querySelector("#copy-inferred-json").addEventListener("click", async ()
 });
 inferForm.addEventListener("input", scheduleAutoInfer);
 inferForm.addEventListener("change", scheduleAutoInfer);
-inferenceResponsePointsInput.addEventListener("input", scheduleAutoInfer);
-inferenceResponsePointsInput.addEventListener("change", scheduleAutoInfer);
+inferForm.addEventListener("input", persistControlValues);
+inferForm.addEventListener("change", persistControlValues);
+inferenceResponsePointsInput.addEventListener("input", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
+inferenceResponsePointsInput.addEventListener("change", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
 window.addEventListener("resize", () => {
   if (state.design.response) {
     drawChart(designChart, state.design.response);
@@ -416,5 +484,6 @@ window.addEventListener("resize", () => {
 });
 
 drawChart(inferenceChart, null);
+restoreControlValues();
 runDesign();
 scheduleAutoInfer();

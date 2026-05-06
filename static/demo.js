@@ -9,6 +9,8 @@ const DEFAULT_DESIGN_PARAMS = {
   rs: null,
 };
 
+const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v2";
+
 const demoState = {
   designCoefficients: null,
   designResponse: null,
@@ -217,6 +219,58 @@ function setControlValue(control, value, field) {
     }
   }
   control.value = displayValue;
+}
+
+function persistentControls() {
+  return [...designForm.elements, designResponsePointsInput, ...inferForm.elements, inferenceResponsePointsInput].filter(
+    (control) => control?.name,
+  );
+}
+
+function controlStorageKey(control) {
+  const formId = control.closest("form")?.id;
+  return formId ? `${formId}:${control.name}` : control.id || control.name;
+}
+
+function savedControlValues() {
+  try {
+    const stored = window.localStorage.getItem(FORM_STORAGE_KEY);
+    const values = stored ? JSON.parse(stored) : null;
+    return values && typeof values === "object" && !Array.isArray(values) ? values : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistControlValues() {
+  try {
+    const values = {};
+    persistentControls().forEach((control) => {
+      values[controlStorageKey(control)] = control.value;
+    });
+    window.localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(values));
+  } catch {
+    // Some embedded or file previews can block localStorage.
+  }
+}
+
+function restoreControlValues() {
+  const values = savedControlValues();
+  if (!values) {
+    return;
+  }
+
+  persistentControls().forEach((control) => {
+    const key = controlStorageKey(control);
+    if (!Object.hasOwn(values, key)) {
+      return;
+    }
+    try {
+      setControlValue(control, values[key], control.name);
+    } catch {
+      // Ignore stale saved select options from an older app version.
+    }
+  });
 }
 
 function applyDesignParameters(params) {
@@ -491,6 +545,7 @@ async function pasteDesignJson() {
     const parsed = JSON.parse(text);
     applyDesignParameters(parsed.inferred || parsed);
     applyMethodDefaults();
+    persistControlValues();
     setStatus("Pasted JSON");
     scheduleAutoDesign();
   } catch (error) {
@@ -587,6 +642,7 @@ designForm.addEventListener("input", (event) => {
   if (event.target.name === "method") {
     applyMethodDefaults();
   }
+  persistControlValues();
   scheduleAutoDesign();
 });
 
@@ -594,6 +650,7 @@ designForm.addEventListener("change", (event) => {
   if (event.target.name === "method") {
     applyMethodDefaults();
   }
+  persistControlValues();
   scheduleAutoDesign();
 });
 
@@ -624,12 +681,30 @@ document.querySelector("#copy-inferred-json").addEventListener("click", async ()
 
 document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
 
-designResponsePointsInput.addEventListener("input", scheduleAutoDesign);
-designResponsePointsInput.addEventListener("change", scheduleAutoDesign);
-inferForm.addEventListener("input", scheduleAutoInfer);
-inferForm.addEventListener("change", scheduleAutoInfer);
-inferenceResponsePointsInput.addEventListener("input", scheduleAutoInfer);
-inferenceResponsePointsInput.addEventListener("change", scheduleAutoInfer);
+designResponsePointsInput.addEventListener("input", () => {
+  persistControlValues();
+  scheduleAutoDesign();
+});
+designResponsePointsInput.addEventListener("change", () => {
+  persistControlValues();
+  scheduleAutoDesign();
+});
+inferForm.addEventListener("input", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
+inferForm.addEventListener("change", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
+inferenceResponsePointsInput.addEventListener("input", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
+inferenceResponsePointsInput.addEventListener("change", () => {
+  persistControlValues();
+  scheduleAutoInfer();
+});
 
 window.addEventListener("resize", () => {
   if (demoState.designResponse) {
@@ -643,6 +718,7 @@ window.addEventListener("resize", () => {
 const initialResponse = parseInitialResponse();
 setFormValues(initialResponse?.params || DEFAULT_DESIGN_PARAMS);
 applyMethodDefaults();
+restoreControlValues();
 setStatus("Loading Python", "working");
 if (initialResponse) {
   renderDesignResult(initialResponse);
