@@ -52,6 +52,38 @@ jobs:
           grep -q "design-source" site/index.html
           grep -q "pyodide/v0.29.3/full/pyodide.js" site/index.html
 
+      - name: Verify static response data
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          html = Path("site/index.html").read_text(encoding="utf-8")
+          match = re.search(
+              r'<script id="demo-data" type="application/json">(.*?)</script>',
+              html,
+              re.S,
+          )
+          if match is None:
+              raise SystemExit("demo-data script is missing")
+
+          data = json.loads(match.group(1))
+          if not data:
+              raise SystemExit("demo-data is empty")
+
+          for case in data:
+              case_id = case.get("id", "<unknown>")
+              response = case.get("response") or {}
+              frequency = response.get("frequency_hz") or []
+              magnitude = response.get("magnitude_db") or []
+              if len(frequency) != 1024 or len(magnitude) != 1024:
+                  raise SystemExit(
+                      f"{case_id} has invalid response data: "
+                      f"{len(frequency)} frequency points, {len(magnitude)} magnitude points"
+                  )
+          PY
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
 

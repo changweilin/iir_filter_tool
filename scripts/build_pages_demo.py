@@ -186,19 +186,19 @@ def _render_html(cases):
           </label>
           <label>
             <span>Sample Rate (Hz)</span>
-            <input name="fs" type="number" min="1" step="1">
+            <input name="fs" type="number" min="1" step="1" value="48000">
           </label>
           <label>
             <span>Frequency f0 (Hz)</span>
-            <input name="f0" type="number" min="1" step="1">
+            <input name="f0" type="number" min="1" step="1" value="1000">
           </label>
           <label>
             <span>Q</span>
-            <input name="Q" type="number" min="0.0001" step="0.1">
+            <input name="Q" type="number" min="0.0001" step="0.1" value="5">
           </label>
           <label>
             <span>Order</span>
-            <input name="order" type="number" min="1" step="1">
+            <input name="order" type="number" min="1" step="1" value="2">
           </label>
           <label>
             <span>Passband Ripple rp (dB)</span>

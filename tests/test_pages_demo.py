@@ -24,6 +24,8 @@ class PagesDemoTests(unittest.TestCase):
         html = (output / "index.html").read_text(encoding="utf-8")
         self.assertIn("IIR Filter Static Demo", html)
         self.assertIn('select name="ftype"', html)
+        self.assertIn('input name="fs" type="number" min="1" step="1" value="48000"', html)
+        self.assertIn('input name="f0" type="number" min="1" step="1" value="1000"', html)
         self.assertIn('id="auto-update-indicator"', html)
         self.assertIn('id="inference-response-chart"', html)
         self.assertNotIn('id="design-submit"', html)
@@ -46,11 +48,15 @@ class PagesDemoTests(unittest.TestCase):
 
         data = json.loads(match.group(1))
         self.assertEqual(len(data), len(DEMO_CASES))
-        self.assertEqual(len(data[0]["b"]), 3)
-        self.assertEqual(len(data[0]["a"]), 3)
-        self.assertEqual(len(data[0]["response"]["frequency_hz"]), 1024)
-        self.assertEqual(len(data[0]["response"]["magnitude_db"]), 1024)
-        self.assertNotIn("inferred", data[0])
+        for demo_case in data:
+            with self.subTest(case=demo_case["id"]):
+                self.assertIn("b", demo_case)
+                self.assertIn("a", demo_case)
+                self.assertGreater(len(demo_case["b"]), 0)
+                self.assertGreater(len(demo_case["a"]), 0)
+                self.assertEqual(len(demo_case["response"]["frequency_hz"]), 1024)
+                self.assertEqual(len(demo_case["response"]["magnitude_db"]), 1024)
+                self.assertNotIn("inferred", demo_case)
 
 
 if __name__ == "__main__":

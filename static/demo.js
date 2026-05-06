@@ -1,4 +1,24 @@
-const demoCases = JSON.parse(document.querySelector("#demo-data").textContent);
+const DEFAULT_DESIGN_PARAMS = {
+  ftype: "bandpass",
+  method: "biquad",
+  fs: 48000,
+  f0: 1000,
+  Q: 5,
+  order: 2,
+  rp: null,
+  rs: null,
+};
+
+function parseDemoCases() {
+  try {
+    const data = JSON.parse(document.querySelector("#demo-data")?.textContent || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+const demoCases = parseDemoCases();
 
 const demoState = {
   index: 0,
@@ -169,6 +189,12 @@ function scheduleAutoDesign() {
 }
 
 function renderCase(index) {
+  if (!demoCases.length) {
+    setFormValues(DEFAULT_DESIGN_PARAMS);
+    applyMethodDefaults();
+    return;
+  }
+
   demoState.index = index;
   const demoCase = demoCases[index];
   setFormValues(demoCase.params);
@@ -322,7 +348,7 @@ def py_infer(payload_json):
   demoState.ready = true;
   setStatus("Ready");
   setBusy(false);
-  if (autoDesignPending) {
+  if (autoDesignPending || !demoState.designResponse) {
     scheduleAutoDesign();
   }
 }
@@ -475,7 +501,13 @@ window.addEventListener("resize", () => {
 });
 
 renderPresetButtons();
-renderCase(0);
+if (demoCases.length) {
+  renderCase(0);
+} else {
+  setFormValues(DEFAULT_DESIGN_PARAMS);
+  applyMethodDefaults();
+  setStatus("Loading Python", "working");
+}
 drawChart(inferenceChart, inferenceChartMeta, null);
 setBusy(true);
 initPyodideRuntime().catch((error) => {
