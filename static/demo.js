@@ -1,4 +1,6 @@
 const demoCases = JSON.parse(document.querySelector("#demo-data").textContent);
+const RESPONSE_POINTS = 1024;
+
 const demoState = {
   index: 0,
   coefficients: null,
@@ -28,6 +30,30 @@ function formatNumber(value) {
     return Number.isInteger(value) ? String(value) : value.toPrecision(8);
   }
   return String(value);
+}
+
+function numberOrNull(value) {
+  if (value === "" || value == null) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function positiveNumber(value, name) {
+  const parsed = numberOrNull(value);
+  if (parsed == null || parsed <= 0) {
+    throw new Error(`${name} must be a positive finite value`);
+  }
+  return parsed;
+}
+
+function positiveInteger(value, name) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function renderList(selector, values) {
@@ -67,36 +93,175 @@ function renderPresetButtons() {
   });
 }
 
-function renderCase(index) {
-  demoState.index = index;
-  const demoCase = demoCases[index];
-  const params = demoCase.params;
-
+function setFormValues(params) {
   ["ftype", "method", "fs", "f0", "Q", "order", "rp", "rs"].forEach((field) => {
     if (designForm.elements[field]) {
       designForm.elements[field].value = formatNumber(params[field]);
     }
   });
+}
 
-  demoState.coefficients = { b: demoCase.b, a: demoCase.a };
-  demoState.inferred = demoCase.inferred;
-  demoState.response = demoCase.response;
+function currentDesignParams() {
+  const data = new FormData(designForm);
+  return {
+    ftype: data.get("ftype"),
+    method: data.get("method"),
+    fs: positiveNumber(data.get("fs"), "fs"),
+    f0: positiveNumber(data.get("f0"), "f0"),
+    Q: positiveNumber(data.get("Q"), "Q"),
+    order: positiveInteger(data.get("order"), "order"),
+    rp: numberOrNull(data.get("rp")),
+    rs: numberOrNull(data.get("rs")),
+  };
+}
 
-  renderList("#b-list", demoCase.b);
-  renderList("#a-list", demoCase.a);
-  renderSummary(demoCase.inferred);
-  drawChart(demoCase.response);
-
-  inferForm.elements.b.value = JSON.stringify(demoCase.b);
-  inferForm.elements.a.value = JSON.stringify(demoCase.a);
-  inferForm.elements.fs.value = params.fs;
-  document.querySelector("#coeff-json").textContent = JSON.stringify(demoState.coefficients, null, 2);
-  document.querySelector("#inferred-json").textContent = JSON.stringify(demoCase.inferred, null, 2);
+function renderCase(index) {
+  demoState.index = index;
+  const demoCase = demoCases[index];
+  setFormValues(demoCase.params);
+  renderResult({
+    b: demoCase.b,
+    a: demoCase.a,
+    response: demoCase.response,
+    inferred: demoCase.inferred,
+  });
   setStatus(demoCase.title);
 
   [...presetList.children].forEach((button, buttonIndex) => {
     button.classList.toggle("is-active", buttonIndex === index);
   });
+}
+
+function renderResult(data) {
+  demoState.coefficients = { b: data.b, a: data.a };
+  demoState.inferred = data.inferred;
+  demoState.response = data.response;
+
+  renderList("#b-list", data.b);
+  renderList("#a-list", data.a);
+  renderSummary(data.inferred);
+  drawChart(data.response);
+
+  inferForm.elements.b.value = JSON.stringify(data.b);
+  inferForm.elements.a.value = JSON.stringify(data.a);
+  inferForm.elements.fs.value = designForm.elements.fs.value;
+  document.querySelector("#coeff-json").textContent = JSON.stringify(demoState.coefficients, null, 2);
+  document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+}
+
+function designBiquad(params) {
+  if (params.method !== "biquad") {
+    throw new Error("Static custom design supports biquad only. Use presets for SciPy methods.");
+  }
+  if (params.order !== 2) {
+    throw new Error("RBJ biquad design requires order=2");
+  }
+  if (params.f0 >= params.fs / 2) {
+    throw new Error("f0 must be below the Nyquist frequency");
+  }
+
+  const w0 = (2 * Math.PI * params.f0) / params.fs;
+  const alpha = Math.sin(w0) / (2 * params.Q);
+  const cosp = Math.cos(w0);
+  let b0;
+  let b1;
+  let b2;
+
+  if (params.ftype === "lowpass") {
+    b0 = (1 - cosp) / 2;
+    b1 = 1 - cosp;
+    b2 = (1 - cosp) / 2;
+  } else if (params.ftype === "highpass") {
+    b0 = (1 + cosp) / 2;
+    b1 = -(1 + cosp);
+    b2 = (1 + cosp) / 2;
+  } else if (params.ftype === "bandpass") {
+    b0 = alpha;
+    b1 = 0;
+    b2 = -alpha;
+  } else if (params.ftype === "notch") {
+    b0 = 1;
+    b1 = -2 * cosp;
+    b2 = 1;
+  } else {
+    throw new Error(`Unsupported filter type: ${params.ftype}`);
+  }
+
+  const a0 = 1 + alpha;
+  const a1 = -2 * cosp;
+  const a2 = 1 - alpha;
+  return {
+    b: [b0 / a0, b1 / a0, b2 / a0],
+    a: [1, a1 / a0, a2 / a0],
+  };
+}
+
+function frequencyResponse(b, a, fs) {
+  const frequencyHz = [];
+  const magnitudeDb = [];
+  for (let i = 0; i < RESPONSE_POINTS; i += 1) {
+    const frequency = (i * fs) / (2 * RESPONSE_POINTS);
+    const w = (2 * Math.PI * frequency) / fs;
+    const numerator = evaluatePolynomial(b, w);
+    const denominator = evaluatePolynomial(a, w);
+    const denomPower = denominator.real * denominator.real + denominator.imag * denominator.imag;
+    const real = (numerator.real * denominator.real + numerator.imag * denominator.imag) / denomPower;
+    const imag = (numerator.imag * denominator.real - numerator.real * denominator.imag) / denomPower;
+    const magnitude = Math.max(Math.hypot(real, imag), Number.MIN_VALUE);
+    frequencyHz.push(frequency);
+    magnitudeDb.push(20 * Math.log10(magnitude));
+  }
+  return {
+    frequency_hz: frequencyHz,
+    magnitude_db: magnitudeDb,
+  };
+}
+
+function evaluatePolynomial(coefficients, w) {
+  return coefficients.reduce(
+    (sum, coefficient, index) => {
+      const angle = -w * index;
+      return {
+        real: sum.real + coefficient * Math.cos(angle),
+        imag: sum.imag + coefficient * Math.sin(angle),
+      };
+    },
+    { real: 0, imag: 0 },
+  );
+}
+
+function inferBiquad(params, b, a) {
+  return {
+    ftype: params.ftype,
+    f0: params.f0,
+    Q: params.Q,
+    order: Math.max(a.length - 1, 0),
+    fs: params.fs,
+    rp: params.rp,
+    rs: params.rs,
+    gd_dev: null,
+    poles: [],
+    zeros: [],
+    method: "biquad",
+    designable: true,
+  };
+}
+
+function runDesign() {
+  try {
+    const params = currentDesignParams();
+    const { b, a } = designBiquad(params);
+    renderResult({
+      b,
+      a,
+      response: frequencyResponse(b, a, params.fs),
+      inferred: inferBiquad(params, b, a),
+    });
+    setStatus("Designed");
+    [...presetList.children].forEach((button) => button.classList.remove("is-active"));
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
 }
 
 function drawChart(response) {
@@ -186,9 +351,7 @@ function drawChart(response) {
   chartMeta.textContent = `${frequencies.length} points`;
 }
 
-document.querySelector("#design-submit").addEventListener("click", () => {
-  renderCase((demoState.index + 1) % demoCases.length);
-});
+document.querySelector("#design-submit").addEventListener("click", runDesign);
 
 document.querySelector("#infer-submit").addEventListener("click", () => {
   document.querySelector("#inferred-json").textContent = JSON.stringify(demoState.inferred, null, 2);
@@ -208,11 +371,7 @@ applyInferredButton.addEventListener("click", () => {
   if (!inferred) {
     return;
   }
-  ["ftype", "method", "fs", "f0", "Q", "order", "rp", "rs"].forEach((field) => {
-    if (designForm.elements[field]) {
-      designForm.elements[field].value = formatNumber(inferred[field]);
-    }
-  });
+  setFormValues(inferred);
   setStatus("Applied");
 });
 

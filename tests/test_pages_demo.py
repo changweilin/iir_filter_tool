@@ -14,7 +14,7 @@ class PagesDemoTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.output_dir, ignore_errors=True)
 
-    def test_build_site_writes_static_demo(self):
+    def test_build_site_writes_editable_static_demo(self):
         output = build_site(self.output_dir)
 
         self.assertTrue((output / "index.html").is_file())
@@ -22,7 +22,10 @@ class PagesDemoTests(unittest.TestCase):
         self.assertTrue((output / "static" / "demo.js").is_file())
 
         html = (output / "index.html").read_text(encoding="utf-8")
-        self.assertIn("IIR 濾波器靜態展示", html)
+        self.assertIn("IIR Filter Static Demo", html)
+        self.assertIn('select name="ftype"', html)
+        self.assertIn('button id="design-submit"', html)
+        self.assertNotIn('input name="ftype" readonly', html)
         self.assertIn("static/demo.js", html)
 
     def test_demo_data_contains_response_and_coefficients(self):

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import freqz
 
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -138,7 +139,7 @@ def _render_html(cases):
     data = json.dumps(cases, ensure_ascii=False, separators=(",", ":"))
     data = data.replace("</", "<\\/")
     return f"""<!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -149,7 +150,7 @@ def _render_html(cases):
     <header class="app-header">
       <div>
         <p class="eyebrow">IIR Filter Tool</p>
-        <h1>IIR 濾波器靜態展示</h1>
+        <h1>IIR Filter Static Demo</h1>
       </div>
       <div id="status" class="status" role="status" aria-live="polite">Static Demo</div>
     </header>
@@ -157,43 +158,55 @@ def _render_html(cases):
     <main class="shell">
       <section class="panel controls-panel" aria-labelledby="design-heading">
         <div class="section-title">
-          <h2 id="design-heading">展示範例</h2>
-          <button id="design-submit" class="primary-button" type="button">Next Sample</button>
+          <h2 id="design-heading">Design Parameters</h2>
+          <button id="design-submit" class="primary-button" type="button">Run Design</button>
         </div>
         <div id="preset-list" class="preset-list"></div>
 
         <form id="design-form" class="form-grid">
           <label>
             <span>Filter Type</span>
-            <input name="ftype" readonly>
+            <select name="ftype">
+              <option value="bandpass">bandpass</option>
+              <option value="lowpass">lowpass</option>
+              <option value="highpass">highpass</option>
+              <option value="notch">notch</option>
+            </select>
           </label>
           <label>
             <span>Method</span>
-            <input name="method" readonly>
+            <select name="method">
+              <option value="biquad">biquad</option>
+              <option value="butterworth">butterworth</option>
+              <option value="cheby1">cheby1</option>
+              <option value="cheby2">cheby2</option>
+              <option value="elliptic">elliptic</option>
+              <option value="bessel">bessel</option>
+            </select>
           </label>
           <label>
             <span>Sample Rate (Hz)</span>
-            <input name="fs" readonly>
+            <input name="fs" type="number" min="1" step="1">
           </label>
           <label>
             <span>Frequency f0 (Hz)</span>
-            <input name="f0" readonly>
+            <input name="f0" type="number" min="1" step="1">
           </label>
           <label>
             <span>Q</span>
-            <input name="Q" readonly>
+            <input name="Q" type="number" min="0.0001" step="0.1">
           </label>
           <label>
             <span>Order</span>
-            <input name="order" readonly>
+            <input name="order" type="number" min="1" step="1">
           </label>
           <label>
             <span>Passband Ripple rp (dB)</span>
-            <input name="rp" readonly>
+            <input name="rp" type="number" min="0.0001" step="0.1" placeholder="preset only">
           </label>
           <label>
             <span>Stopband Attenuation rs (dB)</span>
-            <input name="rs" readonly>
+            <input name="rs" type="number" min="0.0001" step="1" placeholder="preset only">
           </label>
         </form>
       </section>
@@ -210,7 +223,7 @@ def _render_html(cases):
 
       <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
         <div class="section-title">
-          <h2 id="coefficients-heading">係數</h2>
+          <h2 id="coefficients-heading">Coefficients</h2>
           <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <div class="coeff-columns">
@@ -228,7 +241,7 @@ def _render_html(cases):
 
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
-          <h2 id="infer-heading">係數反推</h2>
+          <h2 id="infer-heading">Coefficient Inference</h2>
           <button id="infer-submit" class="primary-button" type="button">Show Inferred</button>
         </div>
         <form id="infer-form" class="infer-grid">
@@ -249,7 +262,7 @@ def _render_html(cases):
 
       <section class="panel inferred-panel" aria-labelledby="inferred-heading">
         <div class="section-title">
-          <h2 id="inferred-heading">反推結果</h2>
+          <h2 id="inferred-heading">Inferred Result</h2>
           <button id="apply-inferred" class="ghost-button" type="button">Apply</button>
         </div>
         <dl id="inferred-summary" class="summary-list"></dl>
