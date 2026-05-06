@@ -48,40 +48,31 @@ jobs:
           test -s site/static/styles.css
           test -s site/static/demo.js
           grep -q "IIR Filter Static Demo" site/index.html
-          grep -q "demo-data" site/index.html
           grep -q "design-source" site/index.html
+          grep -q "infer-source" site/index.html
+          grep -q "design-response-points" site/index.html
+          grep -q "inference-response-points" site/index.html
+          grep -q "Design Coefficients" site/index.html
           grep -q "pyodide/v0.29.3/full/pyodide.js" site/index.html
 
-      - name: Verify static response data
+      - name: Verify static demo markup
         run: |
           python - <<'PY'
-          import json
-          import re
           from pathlib import Path
 
           html = Path("site/index.html").read_text(encoding="utf-8")
-          match = re.search(
-              r'<script id="demo-data" type="application/json">(.*?)</script>',
-              html,
-              re.S,
-          )
-          if match is None:
-              raise SystemExit("demo-data script is missing")
-
-          data = json.loads(match.group(1))
-          if not data:
-              raise SystemExit("demo-data is empty")
-
-          for case in data:
-              case_id = case.get("id", "<unknown>")
-              response = case.get("response") or {}
-              frequency = response.get("frequency_hz") or []
-              magnitude = response.get("magnitude_db") or []
-              if len(frequency) != 1024 or len(magnitude) != 1024:
-                  raise SystemExit(
-                      f"{case_id} has invalid response data: "
-                      f"{len(frequency)} frequency points, {len(magnitude)} magnitude points"
-                  )
+          forbidden = [
+              "demo-data",
+              "preset-list",
+              "Biquad Bandpass",
+              "Butterworth Lowpass",
+              "Elliptic Notch",
+              'start="0"',
+              "json-toolbar",
+          ]
+          for text in forbidden:
+              if text in html:
+                  raise SystemExit(f"unexpected static demo markup: {text}")
           PY
 
       - name: Configure GitHub Pages
