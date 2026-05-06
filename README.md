@@ -1,18 +1,19 @@
 # IIR Filter Tool
 
-一個用 Python 實作的 IIR 濾波器設計與分析工具，包含可匯入的 Python API、範例程式，以及 Flask Web UI。它可以設計常見 IIR 濾波器、畫出頻率響應，並從既有係數推估濾波器參數。
+IIR Filter Tool 是一個用 Python 建立的數位 IIR 濾波器設計與分析工具。它可以透過 Python API、Flask Web UI、JSON API，以及可部署到 GitHub Pages 的靜態 demo 來設計濾波器、檢視頻率響應，並從既有係數推估濾波器參數。
 
 ## 功能
 
-- 支援濾波器類型：`lowpass`、`highpass`、`bandpass`、`notch`
-- 支援設計方法：RBJ `biquad`、`butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel`
-- 從 `b` / `a` 係數推估濾波器類型、截止或中心頻率、`Q`、階數、漣波、阻帶衰減、群延遲變化、零點與極點
-- Web UI 可互動設計濾波器、檢視 magnitude response、複製 JSON 係數，並從係數反推參數
-- 提供 JSON API，方便整合到其他工具或前端
+- 支援 `lowpass`、`highpass`、`bandpass`、`notch` 濾波器類型。
+- 支援 RBJ `biquad`，以及 SciPy 提供的 `butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel` 設計方法。
+- 可從 `b` / `a` 傳遞函數係數推估濾波器類型、中心或截止頻率、Q 值、階數、漣波、阻帶衰減與極零點。
+- Web UI 可輸入設計參數、顯示係數、繪製 magnitude response，並從係數進行推估。
+- JSON API 適合接到其他工具或前端。
+- 靜態 demo 可建置到 `site/`，並透過 GitHub Pages 發布。
 
 ## 安裝
 
-建議先建立虛擬環境，再安裝相依套件。
+建議使用虛擬環境：
 
 ```powershell
 python -m venv .venv
@@ -20,33 +21,28 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-若你已經有可用的 Python 環境，也可以直接安裝：
-
-```bash
-pip install -r requirements.txt
-```
-
-如果 Windows 環境中 `python` 不在 `PATH`，可改用 Python launcher：
+如果系統的 `python` 不在 `PATH`，Windows 也可以使用 Python launcher：
 
 ```powershell
 py -m pip install -r requirements.txt
 ```
 
-在 Codex bundled Python 環境中，也可以直接使用完整路徑：
+專案依賴列在 [requirements.txt](requirements.txt)：
 
-```powershell
-& "C:\Users\user\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" -m pip install -r requirements.txt
-```
+- `numpy`
+- `scipy`
+- `matplotlib`
+- `flask`
 
-## Python 快速開始
+## Python API
 
-執行內建範例：
+執行範例：
 
 ```bash
 python example.py
 ```
 
-或在自己的程式中使用：
+基本用法：
 
 ```python
 from iir_filter import design_iir, infer_iir_params, plot_response
@@ -54,10 +50,10 @@ from iir_filter import design_iir, infer_iir_params, plot_response
 fs = 48000
 params = {
     "ftype": "bandpass",
+    "method": "biquad",
     "f0": 1000,
     "Q": 5,
     "order": 2,
-    "method": "biquad",
 }
 
 b, a = design_iir(params, fs=fs)
@@ -78,18 +74,16 @@ plot_response(b, a, fs=fs, title="Bandpass response")
 python web_app.py
 ```
 
-若 `python` 不在 `PATH`，請改用 `py web_app.py` 或上方的完整 Python 路徑。
+開啟 [http://127.0.0.1:5000](http://127.0.0.1:5000)。如果 `5000` 已被佔用，程式會嘗試使用 `5001`。
 
-預設會使用 [http://127.0.0.1:5000](http://127.0.0.1:5000)，如果 `5000` 已被占用，會自動嘗試 `5001`。
-
-也可以指定埠號：
+也可以指定連接埠：
 
 ```powershell
 $env:PORT = "5050"
 python web_app.py
 ```
 
-Makefile 也提供簡單指令：
+Makefile 提供幾個常用入口：
 
 ```bash
 make run
@@ -97,21 +91,11 @@ make web
 make pages-demo
 ```
 
-## GitHub Pages 靜態展示版
-
-GitHub Pages 不能執行 Flask server，因此專案提供一個靜態展示頁產生器。它會輸出可直接發布的靜態檔案，並在瀏覽器中透過 Pyodide 載入 Python、NumPy、SciPy，直接執行與 Flask 版相同的濾波器設計與反推邏輯。第一次開頁需要下載 Pyodide/SciPy，載入完成後即可輸入參數並計算所有支援的方法。
-
-```bash
-python scripts/build_pages_demo.py --output site
-```
-
-產出的 `site/index.html` 可以直接由 GitHub Pages 發布。`.github/workflows/pages.yml` 會在推送到 `main` 或 `master` 時自動建立展示頁並部署到 `https://<owner>.github.io/<repo>/`。
-
 ## JSON API
 
 ### `POST /api/design`
 
-根據設計參數回傳濾波器係數、頻率響應與反推參數。
+依參數設計濾波器，回傳係數與頻率響應。
 
 Request:
 
@@ -128,16 +112,24 @@ Request:
 }
 ```
 
-Response 欄位包含：
+Response:
 
-- `b`: numerator coefficients
-- `a`: denominator coefficients
-- `response.frequency_hz`: 頻率座標
-- `response.magnitude_db`: magnitude response，單位 dB
+```json
+{
+  "b": [0.0127622136, 0.0, -0.0127622136],
+  "a": [1.0, -1.9567614225, 0.9744755728],
+  "response": {
+    "frequency_hz": [0.0, 23.4375],
+    "magnitude_db": [-320.0, -32.4]
+  }
+}
+```
+
+`response.frequency_hz` 與 `response.magnitude_db` 實際會各回傳 1024 個點。
 
 ### `POST /api/infer`
 
-根據既有 `b` / `a` 係數推估參數並回傳頻率響應。
+從既有 `b` / `a` 係數推估濾波器參數，並回傳該係數的頻率響應。
 
 Request:
 
@@ -149,25 +141,44 @@ Request:
 }
 ```
 
-`b` 和 `a` 可以是 JSON array，也可以是逗號或空白分隔的字串。
+Response 會包含：
 
-Response 欄位包含 `inferred`、`response.frequency_hz`、`response.magnitude_db`。
+- `inferred`: 推估出的描述性參數。
+- `response.frequency_hz`: 頻率軸資料。
+- `response.magnitude_db`: magnitude response，以 dB 表示。
 
 ## 參數說明
 
-- `fs`: 取樣率，必須為正數
-- `f0`: 截止頻率或中心頻率，必須小於 Nyquist frequency，也就是 `fs / 2`
-- `Q`: RBJ `biquad` 必填；`bandpass` / `notch` 設計時會用來決定頻帶寬度
-- `order`: 濾波器階數；RBJ `biquad` 只能使用 `order=2`
-- `rp`: Chebyshev I 與 Elliptic 設計所需的 passband ripple，單位 dB
-- `rs`: Chebyshev II 與 Elliptic 設計所需的 stopband attenuation，單位 dB
-- `norm`: Bessel 設計可用 `phase`、`delay`、`mag`，未指定時預設為 `phase`
+- `fs`: 取樣率，單位 Hz，預設為 `48000`。
+- `f0`: cutoff 或 center frequency，必須大於 0 且低於 Nyquist frequency，也就是 `fs / 2`。
+- `Q`: bandpass、notch 與 RBJ biquad 會使用的品質因數。SciPy-backed 的 bandpass/notch 會用 `Q` 推算頻帶邊界。
+- `order`: 濾波器階數。RBJ `biquad` 必須使用 `order=2`。
+- `rp`: Chebyshev I 與 Elliptic 的 passband ripple，單位 dB。
+- `rs`: Chebyshev II 與 Elliptic 的 stopband attenuation，單位 dB。
+- `norm`: Bessel 設計可使用 `phase`、`delay` 或 `mag`，預設為 `phase`。
 
-## 注意事項
+## 支援的設計方法
 
-- `infer_iir_params` 是 best-effort 分析工具，不保證所有濾波器都能精準還原成原始設計參數。
-- 目前 RBJ biquad 係數可較可靠地反推出可重新設計的參數；多數 SciPy prototype 濾波器會回傳 analysis-only metadata。
-- `notch` 在 SciPy-backed 設計中會映射為 `bandstop`。
+| Method | 說明 | 必要參數 |
+| --- | --- | --- |
+| `biquad` | RBJ biquad 設計 | `ftype`, `f0`, `Q`, `order=2` |
+| `butterworth` | SciPy Butterworth | `ftype`, `f0`, `order` |
+| `cheby1` | SciPy Chebyshev I | `ftype`, `f0`, `order`, `rp` |
+| `cheby2` | SciPy Chebyshev II | `ftype`, `f0`, `order`, `rs` |
+| `elliptic` | SciPy Elliptic | `ftype`, `f0`, `order`, `rp`, `rs` |
+| `bessel` | SciPy Bessel | `ftype`, `f0`, `order`, optional `norm` |
+
+`butter` 是 `butterworth` 的別名，`ellip` 是 `elliptic` 的別名，`bandstop` 會被視為 `notch`。
+
+## GitHub Pages 靜態 Demo
+
+GitHub Pages 不能直接執行 Flask server，因此專案提供靜態 demo 建置腳本。它會把 CSS、demo JavaScript、預先計算的範例資料，以及必要的 Python 設計與推估邏輯輸出到 `site/`。
+
+```bash
+python scripts/build_pages_demo.py --output site
+```
+
+本 repo 已包含 `.github/workflows/pages.yml`。推送到 `main` 或 `master` 時，workflow 會安裝依賴、執行測試、建置 `site/`，再部署到 GitHub Pages。
 
 ## 測試
 
@@ -175,17 +186,32 @@ Response 欄位包含 `inferred`、`response.frequency_hz`、`response.magnitude
 python -m unittest discover -s tests
 ```
 
+測試涵蓋：
+
+- IIR 設計與參數驗證。
+- RBJ biquad 係數反推。
+- SciPy-backed 濾波器分析 metadata。
+- Flask JSON API。
+- GitHub Pages 靜態 demo 建置結果。
+
 ## 專案結構
 
 ```text
 iir_filter/
-  design.py      # IIR 設計邏輯
-  infer.py       # 係數分析與參數推估
-  plot.py        # Matplotlib 頻率響應繪圖
-example.py       # Python API 使用範例
-web_app.py       # Flask Web UI 與 JSON API
-scripts/         # GitHub Pages 靜態展示頁產生器
-templates/       # HTML template
-static/          # 前端 JavaScript 與 CSS
-tests/           # 單元測試
+  design.py      # IIR filter design
+  infer.py       # coefficient analysis and parameter inference
+  plot.py        # Matplotlib response plotting
+example.py       # Python API example
+web_app.py       # Flask Web UI and JSON API
+scripts/         # GitHub Pages static demo builder
+templates/       # Flask HTML template
+static/          # CSS and browser JavaScript
+tests/           # unit tests
+site/            # generated static demo output
 ```
+
+## 注意事項
+
+- `infer_iir_params` 是 best-effort 分析工具。RBJ biquad 通常可以精準回推；SciPy prototype 濾波器多半只回傳 analysis-only metadata。
+- `notch` 在 SciPy-backed 設計路徑中會映射為 `bandstop`。
+- Web API 的數值輸出會轉成 JSON-safe 格式，非有限浮點值會轉成 `null`。
