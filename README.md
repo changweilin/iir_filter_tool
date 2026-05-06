@@ -99,7 +99,7 @@ make pages-demo
 
 ## GitHub Pages 靜態展示版
 
-GitHub Pages 不能執行 Flask server，因此專案提供一個靜態展示頁產生器。它會在 build time 使用現有 Python/SciPy 核心預先算好幾組範例，輸出可直接發布的靜態檔案。靜態頁也支援直接在瀏覽器輸入參數並計算 RBJ `biquad`；`butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel` 這類 SciPy-backed 方法在 Pages 版中以預先產生的範例展示。
+GitHub Pages 不能執行 Flask server，因此專案提供一個靜態展示頁產生器。它會輸出可直接發布的靜態檔案，並在瀏覽器中透過 Pyodide 載入 Python、NumPy、SciPy，直接執行與 Flask 版相同的濾波器設計與反推邏輯。第一次開頁需要下載 Pyodide/SciPy，載入完成後即可輸入參數並計算所有支援的方法。
 
 ```bash
 python scripts/build_pages_demo.py --output site

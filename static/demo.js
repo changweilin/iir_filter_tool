@@ -1,11 +1,12 @@
 const demoCases = JSON.parse(document.querySelector("#demo-data").textContent);
-const RESPONSE_POINTS = 1024;
 
 const demoState = {
   index: 0,
   coefficients: null,
   inferred: null,
   response: null,
+  pyodide: null,
+  ready: false,
 };
 
 const statusEl = document.querySelector("#status");
@@ -15,11 +16,21 @@ const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
 const applyInferredButton = document.querySelector("#apply-inferred");
 const presetList = document.querySelector("#preset-list");
+const inferButton = document.querySelector("#infer-submit");
+const autoUpdateIndicator = document.querySelector("#auto-update-indicator");
+let autoDesignTimer = null;
+let autoDesignPending = false;
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
   statusEl.classList.toggle("is-error", mode === "error");
   statusEl.classList.toggle("is-working", mode === "working");
+}
+
+function setBusy(isBusy) {
+  inferButton.disabled = isBusy || !demoState.ready;
+  applyInferredButton.disabled = isBusy || !demoState.inferred?.designable;
+  autoUpdateIndicator.textContent = demoState.ready ? (isBusy ? "Updating" : "Auto updates") : "Loading engine";
 }
 
 function formatNumber(value) {
@@ -108,10 +119,51 @@ function currentDesignParams() {
     method: data.get("method"),
     fs: positiveNumber(data.get("fs"), "fs"),
     f0: positiveNumber(data.get("f0"), "f0"),
-    Q: positiveNumber(data.get("Q"), "Q"),
+    Q: numberOrNull(data.get("Q")),
     order: positiveInteger(data.get("order"), "order"),
     rp: numberOrNull(data.get("rp")),
     rs: numberOrNull(data.get("rs")),
+  };
+}
+
+function applyMethodDefaults() {
+  const method = designForm.elements.method.value;
+  if (method === "cheby1" && !designForm.elements.rp.value) {
+    designForm.elements.rp.value = "1";
+  }
+  if (method === "cheby2" && !designForm.elements.rs.value) {
+    designForm.elements.rs.value = "40";
+  }
+  if (method === "elliptic") {
+    if (!designForm.elements.rp.value) {
+      designForm.elements.rp.value = "1";
+    }
+    if (!designForm.elements.rs.value) {
+      designForm.elements.rs.value = "40";
+    }
+  }
+  if (method === "biquad") {
+    designForm.elements.order.value = "2";
+    designForm.elements.rp.value = "";
+    designForm.elements.rs.value = "";
+  }
+}
+
+function scheduleAutoDesign() {
+  if (!demoState.ready) {
+    autoDesignPending = true;
+    return;
+  }
+  autoDesignPending = false;
+  clearTimeout(autoDesignTimer);
+  autoDesignTimer = setTimeout(runDesign, 450);
+}
+
+function currentInferPayload() {
+  return {
+    b: inferForm.elements.b.value,
+    a: inferForm.elements.a.value,
+    fs: positiveNumber(inferForm.elements.fs.value, "fs"),
   };
 }
 
@@ -119,13 +171,14 @@ function renderCase(index) {
   demoState.index = index;
   const demoCase = demoCases[index];
   setFormValues(demoCase.params);
+  applyMethodDefaults();
   renderResult({
     b: demoCase.b,
     a: demoCase.a,
     response: demoCase.response,
     inferred: demoCase.inferred,
   });
-  setStatus(demoCase.title);
+  setStatus(demoState.ready ? demoCase.title : "Loading Python", demoState.ready ? "ready" : "working");
 
   [...presetList.children].forEach((button, buttonIndex) => {
     button.classList.toggle("is-active", buttonIndex === index);
@@ -144,123 +197,155 @@ function renderResult(data) {
 
   inferForm.elements.b.value = JSON.stringify(data.b);
   inferForm.elements.a.value = JSON.stringify(data.a);
-  inferForm.elements.fs.value = designForm.elements.fs.value;
+  inferForm.elements.fs.value = designForm.elements.fs.value || data.inferred?.fs || "";
   document.querySelector("#coeff-json").textContent = JSON.stringify(demoState.coefficients, null, 2);
   document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+  setBusy(false);
 }
 
-function designBiquad(params) {
-  if (params.method !== "biquad") {
-    throw new Error("Static custom design supports biquad only. Use presets for SciPy methods.");
-  }
-  if (params.order !== 2) {
-    throw new Error("RBJ biquad design requires order=2");
-  }
-  if (params.f0 >= params.fs / 2) {
-    throw new Error("f0 must be below the Nyquist frequency");
+async function initPyodideRuntime() {
+  setBusy(true);
+  setStatus("Loading Python", "working");
+
+  if (!globalThis.loadPyodide) {
+    throw new Error("Pyodide failed to load. Check the network connection for the CDN assets.");
   }
 
-  const w0 = (2 * Math.PI * params.f0) / params.fs;
-  const alpha = Math.sin(w0) / (2 * params.Q);
-  const cosp = Math.cos(w0);
-  let b0;
-  let b1;
-  let b2;
+  const pyodide = await loadPyodide({
+    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/",
+  });
+  setStatus("Loading SciPy", "working");
+  await pyodide.loadPackage(["numpy", "scipy"]);
 
-  if (params.ftype === "lowpass") {
-    b0 = (1 - cosp) / 2;
-    b1 = 1 - cosp;
-    b2 = (1 - cosp) / 2;
-  } else if (params.ftype === "highpass") {
-    b0 = (1 + cosp) / 2;
-    b1 = -(1 + cosp);
-    b2 = (1 + cosp) / 2;
-  } else if (params.ftype === "bandpass") {
-    b0 = alpha;
-    b1 = 0;
-    b2 = -alpha;
-  } else if (params.ftype === "notch") {
-    b0 = 1;
-    b1 = -2 * cosp;
-    b2 = 1;
-  } else {
-    throw new Error(`Unsupported filter type: ${params.ftype}`);
+  const designSource = document.querySelector("#design-source").textContent;
+  const inferSource = document.querySelector("#infer-source").textContent;
+  pyodide.globals.set("DESIGN_SOURCE", designSource);
+  pyodide.globals.set("INFER_SOURCE", inferSource);
+  pyodide.runPython(`
+import json
+import sys
+import types
+
+design_mod = types.ModuleType("iir_filter_design_static")
+exec(DESIGN_SOURCE, design_mod.__dict__)
+infer_mod = types.ModuleType("iir_filter_infer_static")
+exec(INFER_SOURCE, infer_mod.__dict__)
+
+design_iir = design_mod.design_iir
+infer_iir_params = infer_mod.infer_iir_params
+
+def _json_safe(value):
+    import numpy as np
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, np.ndarray):
+        return [_json_safe(item) for item in value.tolist()]
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, complex):
+        return {"real": _json_safe(value.real), "imag": _json_safe(value.imag)}
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    return value
+
+def _frequency_response(b, a, fs):
+    import numpy as np
+    from scipy.signal import freqz
+    f, h = freqz(b, a, worN=1024, fs=fs)
+    magnitude = np.maximum(np.abs(h), np.finfo(float).tiny)
+    magnitude_db = 20 * np.log10(magnitude)
+    return {
+        "frequency_hz": _json_safe(f),
+        "magnitude_db": _json_safe(magnitude_db),
+    }
+
+def _parse_coefficients(value, name):
+    import numpy as np
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError(f"Missing required field: {name}")
+        try:
+            value = json.loads(text)
+        except json.JSONDecodeError:
+            import re
+            value = [part for part in re.split(r"[\\s,]+", text) if part]
+    coefficients = np.asarray(value, dtype=float)
+    if coefficients.ndim != 1 or coefficients.size == 0:
+        raise ValueError(f"{name} must be a one-dimensional coefficient array")
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError(f"{name} coefficients must be finite")
+    return coefficients
+
+def py_design(payload_json):
+    payload = json.loads(payload_json)
+    fs = float(payload.get("fs", 48000))
+    b, a = design_iir(payload, fs=fs)
+    inferred = infer_iir_params(b, a, fs)
+    return json.dumps(_json_safe({
+        "b": b,
+        "a": a,
+        "response": _frequency_response(b, a, fs),
+        "inferred": inferred,
+    }))
+
+def py_infer(payload_json):
+    payload = json.loads(payload_json)
+    fs = float(payload.get("fs", 48000))
+    b = _parse_coefficients(payload.get("b"), "b")
+    a = _parse_coefficients(payload.get("a"), "a")
+    inferred = infer_iir_params(b, a, fs)
+    return json.dumps(_json_safe({
+        "inferred": inferred,
+        "response": _frequency_response(b, a, fs),
+    }))
+`);
+
+  demoState.pyodide = pyodide;
+  demoState.ready = true;
+  setStatus("Ready");
+  setBusy(false);
+  if (autoDesignPending) {
+    scheduleAutoDesign();
   }
-
-  const a0 = 1 + alpha;
-  const a1 = -2 * cosp;
-  const a2 = 1 - alpha;
-  return {
-    b: [b0 / a0, b1 / a0, b2 / a0],
-    a: [1, a1 / a0, a2 / a0],
-  };
 }
 
-function frequencyResponse(b, a, fs) {
-  const frequencyHz = [];
-  const magnitudeDb = [];
-  for (let i = 0; i < RESPONSE_POINTS; i += 1) {
-    const frequency = (i * fs) / (2 * RESPONSE_POINTS);
-    const w = (2 * Math.PI * frequency) / fs;
-    const numerator = evaluatePolynomial(b, w);
-    const denominator = evaluatePolynomial(a, w);
-    const denomPower = denominator.real * denominator.real + denominator.imag * denominator.imag;
-    const real = (numerator.real * denominator.real + numerator.imag * denominator.imag) / denomPower;
-    const imag = (numerator.imag * denominator.real - numerator.real * denominator.imag) / denomPower;
-    const magnitude = Math.max(Math.hypot(real, imag), Number.MIN_VALUE);
-    frequencyHz.push(frequency);
-    magnitudeDb.push(20 * Math.log10(magnitude));
-  }
-  return {
-    frequency_hz: frequencyHz,
-    magnitude_db: magnitudeDb,
-  };
-}
-
-function evaluatePolynomial(coefficients, w) {
-  return coefficients.reduce(
-    (sum, coefficient, index) => {
-      const angle = -w * index;
-      return {
-        real: sum.real + coefficient * Math.cos(angle),
-        imag: sum.imag + coefficient * Math.sin(angle),
-      };
-    },
-    { real: 0, imag: 0 },
-  );
-}
-
-function inferBiquad(params, b, a) {
-  return {
-    ftype: params.ftype,
-    f0: params.f0,
-    Q: params.Q,
-    order: Math.max(a.length - 1, 0),
-    fs: params.fs,
-    rp: params.rp,
-    rs: params.rs,
-    gd_dev: null,
-    poles: [],
-    zeros: [],
-    method: "biquad",
-    designable: true,
-  };
-}
-
-function runDesign() {
+async function runDesign() {
   try {
-    const params = currentDesignParams();
-    const { b, a } = designBiquad(params);
-    renderResult({
-      b,
-      a,
-      response: frequencyResponse(b, a, params.fs),
-      inferred: inferBiquad(params, b, a),
-    });
+    setBusy(true);
+    setStatus("Designing", "working");
+    const result = demoState.pyodide.globals.get("py_design")(JSON.stringify(currentDesignParams()));
+    renderResult(JSON.parse(result));
     setStatus("Designed");
     [...presetList.children].forEach((button) => button.classList.remove("is-active"));
   } catch (error) {
     setStatus(error.message, "error");
+    setBusy(false);
+  }
+}
+
+async function runInfer() {
+  try {
+    setBusy(true);
+    setStatus("Inferring", "working");
+    const result = demoState.pyodide.globals.get("py_infer")(JSON.stringify(currentInferPayload()));
+    const data = JSON.parse(result);
+    demoState.inferred = data.inferred;
+    demoState.response = data.response;
+    renderSummary(data.inferred);
+    drawChart(data.response);
+    document.querySelector("#inferred-json").textContent = JSON.stringify(data.inferred, null, 2);
+    setStatus("Inferred");
+    setBusy(false);
+  } catch (error) {
+    setStatus(error.message, "error");
+    setBusy(false);
   }
 }
 
@@ -351,11 +436,20 @@ function drawChart(response) {
   chartMeta.textContent = `${frequencies.length} points`;
 }
 
-document.querySelector("#design-submit").addEventListener("click", runDesign);
+inferButton.addEventListener("click", runInfer);
 
-document.querySelector("#infer-submit").addEventListener("click", () => {
-  document.querySelector("#inferred-json").textContent = JSON.stringify(demoState.inferred, null, 2);
-  setStatus("Inferred");
+designForm.addEventListener("input", (event) => {
+  if (event.target.name === "method") {
+    applyMethodDefaults();
+  }
+  scheduleAutoDesign();
+});
+
+designForm.addEventListener("change", (event) => {
+  if (event.target.name === "method") {
+    applyMethodDefaults();
+  }
+  scheduleAutoDesign();
 });
 
 document.querySelector("#copy-json").addEventListener("click", async () => {
@@ -383,3 +477,10 @@ window.addEventListener("resize", () => {
 
 renderPresetButtons();
 renderCase(0);
+setBusy(true);
+initPyodideRuntime().catch((error) => {
+  demoState.ready = false;
+  setBusy(false);
+  inferButton.disabled = true;
+  setStatus(error.message, "error");
+});

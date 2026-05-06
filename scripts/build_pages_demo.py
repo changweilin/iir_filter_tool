@@ -138,6 +138,8 @@ def _json_safe(value):
 def _render_html(cases):
     data = json.dumps(cases, ensure_ascii=False, separators=(",", ":"))
     data = data.replace("</", "<\\/")
+    design_source = _script_safe_text((REPO_ROOT / "iir_filter" / "design.py").read_text(encoding="utf-8"))
+    infer_source = _script_safe_text((REPO_ROOT / "iir_filter" / "infer.py").read_text(encoding="utf-8"))
     return f"""<!doctype html>
 <html lang="en">
   <head>
@@ -159,7 +161,7 @@ def _render_html(cases):
       <section class="panel controls-panel" aria-labelledby="design-heading">
         <div class="section-title">
           <h2 id="design-heading">Design Parameters</h2>
-          <button id="design-submit" class="primary-button" type="button">Run Design</button>
+          <span id="auto-update-indicator" class="meta">Auto updates</span>
         </div>
         <div id="preset-list" class="preset-list"></div>
 
@@ -271,10 +273,17 @@ def _render_html(cases):
     </main>
 
     <script id="demo-data" type="application/json">{data}</script>
+    <script id="design-source" type="text/plain">{design_source}</script>
+    <script id="infer-source" type="text/plain">{infer_source}</script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
     <script src="static/demo.js"></script>
   </body>
 </html>
 """
+
+
+def _script_safe_text(text):
+    return text.replace("</", "<\\/")
 
 
 def main():

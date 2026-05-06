@@ -24,8 +24,12 @@ class PagesDemoTests(unittest.TestCase):
         html = (output / "index.html").read_text(encoding="utf-8")
         self.assertIn("IIR Filter Static Demo", html)
         self.assertIn('select name="ftype"', html)
-        self.assertIn('button id="design-submit"', html)
+        self.assertIn('id="auto-update-indicator"', html)
+        self.assertNotIn('id="design-submit"', html)
         self.assertNotIn('input name="ftype" readonly', html)
+        self.assertIn("pyodide/v0.29.3/full/pyodide.js", html)
+        self.assertIn('script id="design-source"', html)
+        self.assertIn('script id="infer-source"', html)
         self.assertIn("static/demo.js", html)
 
     def test_demo_data_contains_response_and_coefficients(self):
