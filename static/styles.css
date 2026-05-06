@@ -160,8 +160,15 @@ h3 {
 .button-group {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.json-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 16px 0 8px;
 }
 
 .meta {
@@ -329,6 +336,10 @@ canvas {
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.json-toolbar + .json-block {
+  margin-top: 0;
 }
 
 .summary-list {

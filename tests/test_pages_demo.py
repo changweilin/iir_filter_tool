@@ -28,6 +28,8 @@ class PagesDemoTests(unittest.TestCase):
         self.assertIn('input name="f0" type="number" min="1" step="1" value="1000"', html)
         self.assertIn('id="auto-update-indicator"', html)
         self.assertIn('id="inference-response-chart"', html)
+        self.assertIn('id="paste-design-json"', html)
+        self.assertIn('id="copy-inferred-json"', html)
         self.assertIn('id="copy-text"', html)
         self.assertIn('id="b-list" class="coeff-list" start="0"', html)
         self.assertIn('name="coefficients"', html)

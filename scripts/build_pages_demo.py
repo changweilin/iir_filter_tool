@@ -159,7 +159,10 @@ def _render_html(cases):
       <section class="panel controls-panel" aria-labelledby="design-heading">
         <div class="section-title">
           <h2 id="design-heading">Design Parameters</h2>
-          <span id="auto-update-indicator" class="meta">Auto updates</span>
+          <div class="button-group" aria-label="Design parameter actions">
+            <button id="paste-design-json" class="ghost-button" type="button">Paste JSON</button>
+            <span id="auto-update-indicator" class="meta">Auto updates</span>
+          </div>
         </div>
         <div id="preset-list" class="preset-list"></div>
 
@@ -225,7 +228,6 @@ def _render_html(cases):
         <div class="section-title">
           <h2 id="coefficients-heading">Coefficients</h2>
           <div class="button-group" aria-label="Coefficient copy actions">
-            <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
             <button id="copy-text" class="ghost-button" type="button">Copy Text</button>
           </div>
         </div>
@@ -238,6 +240,9 @@ def _render_html(cases):
             <h3>a</h3>
             <ol id="a-list" class="coeff-list" start="0"></ol>
           </div>
+        </div>
+        <div class="json-toolbar" aria-label="Coefficient JSON actions">
+          <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <pre id="coeff-json" class="json-block">{{}}</pre>
       </section>
@@ -261,6 +266,7 @@ def _render_html(cases):
       <section class="panel inferred-panel" aria-labelledby="inferred-heading">
         <div class="section-title">
           <h2 id="inferred-heading">Inferred Result</h2>
+          <button id="copy-inferred-json" class="ghost-button" type="button">Copy JSON</button>
         </div>
         <dl id="inferred-summary" class="summary-list"></dl>
         <pre id="inferred-json" class="json-block">{{}}</pre>

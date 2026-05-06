@@ -43,6 +43,7 @@ let autoDesignTimer = null;
 let autoDesignPending = false;
 let autoInferTimer = null;
 let autoInferPending = false;
+let lastCopiedInferredJson = "";
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
@@ -132,6 +133,21 @@ async function writeClipboardText(text) {
   }
 }
 
+async function readClipboardText(fallbackText = "") {
+  try {
+    if (navigator.clipboard?.readText) {
+      return await navigator.clipboard.readText();
+    }
+  } catch {
+    // Use the last in-page inferred JSON copy when direct clipboard reads are restricted.
+  }
+
+  if (fallbackText) {
+    return fallbackText;
+  }
+  throw new Error("Clipboard is unavailable");
+}
+
 function numberOrNull(value) {
   if (value === "" || value == null) {
     return null;
@@ -199,6 +215,36 @@ function setFormValues(params) {
       designForm.elements[field].value = formatNumber(params[field]);
     }
   });
+}
+
+function setControlValue(control, value, field) {
+  const displayValue = value == null ? "" : String(value);
+  if (control.tagName === "SELECT") {
+    const hasOption = [...control.options].some((option) => option.value === displayValue);
+    if (!hasOption) {
+      throw new Error(`Unsupported ${field}: ${displayValue}`);
+    }
+  }
+  control.value = displayValue;
+}
+
+function applyDesignParameters(params) {
+  if (!params || typeof params !== "object" || Array.isArray(params)) {
+    throw new Error("JSON must be an object");
+  }
+
+  const designFields = ["ftype", "method", "fs", "f0", "Q", "order", "rp", "rs"];
+  let appliedCount = 0;
+  designFields.forEach((field) => {
+    if (Object.hasOwn(params, field) && designForm.elements[field]) {
+      setControlValue(designForm.elements[field], params[field], field);
+      appliedCount += 1;
+    }
+  });
+
+  if (!appliedCount) {
+    throw new Error("JSON does not contain design parameters");
+  }
 }
 
 function currentDesignParams() {
@@ -462,6 +508,20 @@ async function runInfer() {
   }
 }
 
+async function pasteDesignJson() {
+  try {
+    const text = await readClipboardText(lastCopiedInferredJson);
+    const parsed = JSON.parse(text);
+    applyDesignParameters(parsed.inferred || parsed);
+    applyMethodDefaults();
+    [...presetList.children].forEach((button) => button.classList.remove("is-active"));
+    setStatus("Pasted JSON");
+    scheduleAutoDesign();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
 function drawChart(canvas, metaEl, response) {
   const frequencies = response?.frequency_hz || [];
   const magnitudes = response?.magnitude_db || [];
@@ -578,6 +638,17 @@ document.querySelector("#copy-text").addEventListener("click", async () => {
   await writeClipboardText(coefficientText(demoState.designCoefficients));
   setStatus("Copied text");
 });
+
+document.querySelector("#copy-inferred-json").addEventListener("click", async () => {
+  if (!demoState.inferenceInferred) {
+    return;
+  }
+  lastCopiedInferredJson = JSON.stringify(demoState.inferenceInferred, null, 2);
+  await writeClipboardText(lastCopiedInferredJson);
+  setStatus("Copied inferred JSON");
+});
+
+document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
 
 inferForm.addEventListener("input", scheduleAutoInfer);
 inferForm.addEventListener("change", scheduleAutoInfer);
