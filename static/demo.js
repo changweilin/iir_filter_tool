@@ -38,10 +38,11 @@ const inferenceChartMeta = document.querySelector("#inference-chart-meta");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
 const presetList = document.querySelector("#preset-list");
-const inferButton = document.querySelector("#infer-submit");
 const autoUpdateIndicator = document.querySelector("#auto-update-indicator");
 let autoDesignTimer = null;
 let autoDesignPending = false;
+let autoInferTimer = null;
+let autoInferPending = false;
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
@@ -50,7 +51,6 @@ function setStatus(message, mode = "ready") {
 }
 
 function setBusy(isBusy) {
-  inferButton.disabled = isBusy || !demoState.ready;
   autoUpdateIndicator.textContent = demoState.ready ? (isBusy ? "Updating" : "Auto updates") : "Loading engine";
 }
 
@@ -62,6 +62,74 @@ function formatNumber(value) {
     return Number.isInteger(value) ? String(value) : value.toPrecision(8);
   }
   return String(value);
+}
+
+function parseNumberSequence(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    throw new Error("Coefficient text is required");
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.map((value) => Number(value));
+    }
+  } catch {
+    // Fall back to comma, semicolon, or whitespace separated values.
+  }
+
+  return trimmed
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((value) => Number(value));
+}
+
+function parseCoefficientText(text) {
+  const values = parseNumberSequence(text);
+  if (!values.length || values.some((value) => !Number.isFinite(value))) {
+    throw new Error("Coefficient text must contain only finite numbers");
+  }
+  if (values.length % 2 !== 0) {
+    throw new Error("Coefficient text must contain the same number of b and a values");
+  }
+
+  const splitIndex = values.length / 2;
+  return {
+    b: values.slice(0, splitIndex),
+    a: values.slice(splitIndex),
+  };
+}
+
+function coefficientText(coefficients) {
+  return [...coefficients.b, ...coefficients.a].map(formatNumber).join(",");
+}
+
+async function writeClipboardText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall back for file:// previews or browsers with restricted clipboard APIs.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto 0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("Clipboard is unavailable");
+  }
 }
 
 function numberOrNull(value) {
@@ -148,9 +216,10 @@ function currentDesignParams() {
 }
 
 function currentInferPayload() {
+  const coefficients = parseCoefficientText(inferForm.elements.coefficients.value);
   return {
-    b: inferForm.elements.b.value,
-    a: inferForm.elements.a.value,
+    b: coefficients.b,
+    a: coefficients.a,
     fs: positiveNumber(inferForm.elements.fs.value, "fs"),
   };
 }
@@ -186,6 +255,16 @@ function scheduleAutoDesign() {
   autoDesignPending = false;
   clearTimeout(autoDesignTimer);
   autoDesignTimer = setTimeout(runDesign, 450);
+}
+
+function scheduleAutoInfer() {
+  if (!demoState.ready) {
+    autoInferPending = true;
+    return;
+  }
+  autoInferPending = false;
+  clearTimeout(autoInferTimer);
+  autoInferTimer = setTimeout(runInfer, 450);
 }
 
 function renderCase(index) {
@@ -351,6 +430,9 @@ def py_infer(payload_json):
   if (autoDesignPending || !demoState.designResponse) {
     scheduleAutoDesign();
   }
+  if (autoInferPending || !demoState.inferenceResponse) {
+    scheduleAutoInfer();
+  }
 }
 
 async function runDesign() {
@@ -467,8 +549,6 @@ function drawChart(canvas, metaEl, response) {
   metaEl.textContent = `${frequencies.length} points`;
 }
 
-inferButton.addEventListener("click", runInfer);
-
 designForm.addEventListener("input", (event) => {
   if (event.target.name === "method") {
     applyMethodDefaults();
@@ -487,9 +567,20 @@ document.querySelector("#copy-json").addEventListener("click", async () => {
   if (!demoState.designCoefficients) {
     return;
   }
-  await navigator.clipboard.writeText(JSON.stringify(demoState.designCoefficients, null, 2));
+  await writeClipboardText(JSON.stringify(demoState.designCoefficients, null, 2));
   setStatus("Copied");
 });
+
+document.querySelector("#copy-text").addEventListener("click", async () => {
+  if (!demoState.designCoefficients) {
+    return;
+  }
+  await writeClipboardText(coefficientText(demoState.designCoefficients));
+  setStatus("Copied text");
+});
+
+inferForm.addEventListener("input", scheduleAutoInfer);
+inferForm.addEventListener("change", scheduleAutoInfer);
 
 window.addEventListener("resize", () => {
   if (demoState.designResponse) {
@@ -513,6 +604,5 @@ setBusy(true);
 initPyodideRuntime().catch((error) => {
   demoState.ready = false;
   setBusy(false);
-  inferButton.disabled = true;
   setStatus(error.message, "error");
 });

@@ -16,6 +16,7 @@ const inferenceChart = document.querySelector("#inference-response-chart");
 const inferenceChartMeta = document.querySelector("#inference-chart-meta");
 const designForm = document.querySelector("#design-form");
 const inferForm = document.querySelector("#infer-form");
+let autoInferTimer = null;
 
 function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
@@ -47,9 +48,10 @@ function designPayload() {
 
 function inferPayload() {
   const data = new FormData(inferForm);
+  const coefficients = parseCoefficientText(data.get("coefficients"));
   return {
-    b: data.get("b"),
-    a: data.get("a"),
+    b: coefficients.b,
+    a: coefficients.a,
     fs: numberOrNull(data.get("fs")),
   };
 }
@@ -77,6 +79,74 @@ function formatNumber(value) {
     return Number.isInteger(value) ? String(value) : value.toPrecision(8);
   }
   return String(value);
+}
+
+function parseNumberSequence(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    throw new Error("Coefficient text is required");
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.map((value) => Number(value));
+    }
+  } catch {
+    // Fall back to comma, semicolon, or whitespace separated values.
+  }
+
+  return trimmed
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+    .map((value) => Number(value));
+}
+
+function parseCoefficientText(text) {
+  const values = parseNumberSequence(text);
+  if (!values.length || values.some((value) => !Number.isFinite(value))) {
+    throw new Error("Coefficient text must contain only finite numbers");
+  }
+  if (values.length % 2 !== 0) {
+    throw new Error("Coefficient text must contain the same number of b and a values");
+  }
+
+  const splitIndex = values.length / 2;
+  return {
+    b: values.slice(0, splitIndex),
+    a: values.slice(splitIndex),
+  };
+}
+
+function coefficientText(coefficients) {
+  return [...coefficients.b, ...coefficients.a].map(formatNumber).join(",");
+}
+
+async function writeClipboardText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // Fall back for file:// previews or browsers with restricted clipboard APIs.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto 0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("Clipboard is unavailable");
+  }
 }
 
 function renderList(selector, values) {
@@ -236,15 +306,28 @@ async function runInfer() {
   }
 }
 
+function scheduleAutoInfer() {
+  clearTimeout(autoInferTimer);
+  autoInferTimer = setTimeout(runInfer, 450);
+}
+
 document.querySelector("#design-submit").addEventListener("click", runDesign);
-document.querySelector("#infer-submit").addEventListener("click", runInfer);
 document.querySelector("#copy-json").addEventListener("click", async () => {
   if (!state.design.coefficients) {
     return;
   }
-  await navigator.clipboard.writeText(JSON.stringify(state.design.coefficients, null, 2));
+  await writeClipboardText(JSON.stringify(state.design.coefficients, null, 2));
   setStatus("Copied");
 });
+document.querySelector("#copy-text").addEventListener("click", async () => {
+  if (!state.design.coefficients) {
+    return;
+  }
+  await writeClipboardText(coefficientText(state.design.coefficients));
+  setStatus("Copied text");
+});
+inferForm.addEventListener("input", scheduleAutoInfer);
+inferForm.addEventListener("change", scheduleAutoInfer);
 window.addEventListener("resize", () => {
   if (state.design.response) {
     drawChart(designChart, designChartMeta, state.design.response);
@@ -256,3 +339,4 @@ window.addEventListener("resize", () => {
 
 drawChart(inferenceChart, inferenceChartMeta, null);
 runDesign();
+scheduleAutoInfer();

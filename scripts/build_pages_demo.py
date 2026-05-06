@@ -224,16 +224,19 @@ def _render_html(cases):
       <section class="panel coefficients-panel" aria-labelledby="coefficients-heading">
         <div class="section-title">
           <h2 id="coefficients-heading">Coefficients</h2>
-          <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
+          <div class="button-group" aria-label="Coefficient copy actions">
+            <button id="copy-json" class="ghost-button" type="button">Copy JSON</button>
+            <button id="copy-text" class="ghost-button" type="button">Copy Text</button>
+          </div>
         </div>
         <div class="coeff-columns">
           <div>
             <h3>b</h3>
-            <ol id="b-list" class="coeff-list"></ol>
+            <ol id="b-list" class="coeff-list" start="0"></ol>
           </div>
           <div>
             <h3>a</h3>
-            <ol id="a-list" class="coeff-list"></ol>
+            <ol id="a-list" class="coeff-list" start="0"></ol>
           </div>
         </div>
         <pre id="coeff-json" class="json-block">{{}}</pre>
@@ -242,16 +245,11 @@ def _render_html(cases):
       <section class="panel infer-panel" aria-labelledby="infer-heading">
         <div class="section-title">
           <h2 id="infer-heading">Coefficient Inference</h2>
-          <button id="infer-submit" class="primary-button" type="button">Run Infer</button>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
-            <span>b coefficients</span>
-            <textarea name="b" rows="4">[0.01276221, 0, -0.01276221]</textarea>
-          </label>
-          <label>
-            <span>a coefficients</span>
-            <textarea name="a" rows="4">[1, -1.95676142, 0.97447558]</textarea>
+            <span>Coefficient text (b0,b1,b2,a0,a1,a2)</span>
+            <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]</textarea>
           </label>
           <label>
             <span>Sample Rate (Hz)</span>
