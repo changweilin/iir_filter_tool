@@ -63,6 +63,18 @@ def _render_html():
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IIR Filter Static Demo</title>
+    <script>
+      (() => {{
+        try {{
+          const storedTheme = window.localStorage.getItem("iir-filter-tool:theme");
+          const prefersNight = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+          const theme = storedTheme === "day" || storedTheme === "night" ? storedTheme : prefersNight ? "night" : "day";
+          document.documentElement.dataset.theme = theme;
+        }} catch {{
+          document.documentElement.dataset.theme = "day";
+        }}
+      }})();
+    </script>
     <link rel="stylesheet" href="static/styles.css">
   </head>
   <body>
@@ -71,7 +83,20 @@ def _render_html():
         <p class="eyebrow">IIR Filter Tool</p>
         <h1>IIR Filter Static Demo</h1>
       </div>
-      <div id="status" class="status" role="status" aria-live="polite">Static Demo</div>
+      <div class="header-actions">
+        <fieldset class="mode-toggle theme-toggle" aria-label="UI theme">
+          <legend>UI theme</legend>
+          <label>
+            <input type="radio" name="theme-mode" value="day" checked>
+            <span>Day</span>
+          </label>
+          <label>
+            <input type="radio" name="theme-mode" value="night">
+            <span>Night</span>
+          </label>
+        </fieldset>
+        <div id="status" class="status" role="status" aria-live="polite">Static Demo</div>
+      </div>
     </header>
 
     <main class="shell">

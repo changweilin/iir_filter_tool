@@ -15,6 +15,9 @@ class WebAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
+        self.assertIn('name="theme-mode"', html)
+        self.assertIn('value="day"', html)
+        self.assertIn('value="night"', html)
         self.assertIn("About Me", html)
         self.assertIn("Chang Wei Lin", html)
         self.assertIn("我愛星空至深，無懼黑夜。", html)

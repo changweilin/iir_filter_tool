@@ -10,6 +10,8 @@ const DEFAULT_DESIGN_PARAMS = {
 };
 
 const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v2";
+const THEME_STORAGE_KEY = "iir-filter-tool:theme";
+const THEME_MODES = new Set(["day", "night"]);
 const COEFFICIENT_MODE_NAMES = {
   design: "design-coefficient-mode",
   inference: "inference-coefficient-mode",
@@ -43,6 +45,7 @@ const demoState = {
 };
 
 const statusEl = document.querySelector("#status");
+const themeControls = document.querySelectorAll('input[name="theme-mode"]');
 const designChart = document.querySelector("#response-chart");
 const designResponsePointsInput = document.querySelector("#design-response-points");
 const inferenceChart = document.querySelector("#inference-response-chart");
@@ -72,6 +75,54 @@ function setStatus(message, mode = "ready") {
   statusEl.textContent = message;
   statusEl.classList.toggle("is-error", mode === "error");
   statusEl.classList.toggle("is-working", mode === "working");
+}
+
+function preferredThemeMode() {
+  const currentTheme = document.documentElement.dataset.theme;
+  if (THEME_MODES.has(currentTheme)) {
+    return currentTheme;
+  }
+
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (THEME_MODES.has(storedTheme)) {
+      return storedTheme;
+    }
+  } catch {
+    // Some embedded or file previews can block localStorage.
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "night" : "day";
+}
+
+function setThemeMode(mode) {
+  const theme = THEME_MODES.has(mode) ? mode : "day";
+  document.documentElement.dataset.theme = theme;
+  themeControls.forEach((control) => {
+    control.checked = control.value === theme;
+  });
+  return theme;
+}
+
+function persistThemeMode(mode) {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch {
+    // Some embedded or file previews can block localStorage.
+  }
+}
+
+function redrawChartsForTheme() {
+  if (demoState.designResponse) {
+    drawChart(designChart, demoState.designResponse);
+  }
+  drawChart(inferenceChart, demoState.inferenceResponse);
+}
+
+function applyThemeMode(mode) {
+  const theme = setThemeMode(mode);
+  persistThemeMode(theme);
+  redrawChartsForTheme();
 }
 
 function setBusy(isBusy) {
@@ -992,12 +1043,28 @@ async function pasteDesignJson() {
   }
 }
 
+function cssColor(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function chartThemeColors() {
+  return {
+    background: cssColor("--chart-bg", "#ffffff"),
+    grid: cssColor("--chart-grid", "#dce4ea"),
+    label: cssColor("--chart-label", "#66727c"),
+    line: cssColor("--chart-line", "#172026"),
+    frame: cssColor("--chart-frame", "#006d77"),
+  };
+}
+
 function drawChart(canvas, response) {
   const frequencies = response?.frequency_hz || [];
   const magnitudes = response?.magnitude_db || [];
   const ctx = canvas.getContext("2d");
   const pixelRatio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
+  const colors = chartThemeColors();
   canvas.width = Math.max(320, Math.floor(rect.width * pixelRatio));
   canvas.height = Math.max(260, Math.floor(rect.height * pixelRatio));
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
@@ -1005,7 +1072,7 @@ function drawChart(canvas, response) {
   const width = rect.width;
   const height = rect.height;
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = colors.background;
   ctx.fillRect(0, 0, width, height);
 
   if (!frequencies.length || !magnitudes.length) {
@@ -1027,9 +1094,9 @@ function drawChart(canvas, response) {
   const xScale = (value) => padding.left + ((value - minX) / (maxX - minX || 1)) * plotWidth;
   const yScale = (value) => padding.top + (1 - (value - minY) / (maxY - minY || 1)) * plotHeight;
 
-  ctx.strokeStyle = "#dce4ea";
+  ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1;
-  ctx.fillStyle = "#66727c";
+  ctx.fillStyle = colors.label;
   ctx.font = "12px Segoe UI, sans-serif";
 
   for (let i = 0; i <= 4; i += 1) {
@@ -1054,7 +1121,7 @@ function drawChart(canvas, response) {
   }
   ctx.textAlign = "left";
 
-  ctx.strokeStyle = "#172026";
+  ctx.strokeStyle = colors.line;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   frequencies.forEach((frequency, index) => {
@@ -1072,10 +1139,19 @@ function drawChart(canvas, response) {
   });
   ctx.stroke();
 
-  ctx.strokeStyle = "#006d77";
+  ctx.strokeStyle = colors.frame;
   ctx.lineWidth = 2;
   ctx.strokeRect(padding.left, padding.top, plotWidth, plotHeight);
 }
+
+setThemeMode(preferredThemeMode());
+themeControls.forEach((control) => {
+  control.addEventListener("change", () => {
+    if (control.checked) {
+      applyThemeMode(control.value);
+    }
+  });
+});
 
 designForm.addEventListener("input", (event) => {
   if (event.target.name === "method") {
