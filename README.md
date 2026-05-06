@@ -94,7 +94,18 @@ Makefile 也提供簡單指令：
 ```bash
 make run
 make web
+make pages-demo
 ```
+
+## GitHub Pages 靜態展示版
+
+GitHub Pages 不能執行 Flask server，因此專案提供一個靜態展示頁產生器。它會在 build time 使用現有 Python/SciPy 核心預先算好幾組範例，輸出可直接發布的靜態檔案：
+
+```bash
+python scripts/build_pages_demo.py --output site
+```
+
+產出的 `site/index.html` 可以直接由 GitHub Pages 發布。`.github/workflows/pages.yml` 會在推送到 `main` 或 `master` 時自動建立展示頁並部署到 `https://<owner>.github.io/<repo>/`。
 
 ## JSON API
 
@@ -172,6 +183,7 @@ iir_filter/
   plot.py        # Matplotlib 頻率響應繪圖
 example.py       # Python API 使用範例
 web_app.py       # Flask Web UI 與 JSON API
+scripts/         # GitHub Pages 靜態展示頁產生器
 templates/       # HTML template
 static/          # 前端 JavaScript 與 CSS
 tests/           # 單元測試

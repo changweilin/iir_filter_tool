@@ -1,2 +1,5 @@
 __pycache__/
 *.py[cod]
+site/
+site-test-output/
+tmp*/
