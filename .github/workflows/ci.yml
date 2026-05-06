@@ -39,7 +39,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          python web_app.py > flask-smoke.log 2>&1 &
+          APP_URL="http://127.0.0.1:5000"
+
+          PORT=5000 python web_app.py > flask-smoke.log 2>&1 &
           SERVER_PID=$!
 
           cleanup() {
@@ -53,20 +55,27 @@ jobs:
           trap cleanup EXIT
           trap show_logs ERR
 
-          for attempt in {1..20}; do
-            if curl --fail --silent --show-error http://127.0.0.1:5000/ > /tmp/iir-home.html; then
+          ready=0
+          for attempt in {1..30}; do
+            if curl --fail --silent "$APP_URL/" > /tmp/iir-home.html; then
+              ready=1
               break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Flask server exited before becoming ready"
+              exit 1
             fi
             sleep 1
           done
 
+          test "$ready" -eq 1
           test -s /tmp/iir-home.html
           grep -q "Run Design" /tmp/iir-home.html
 
           curl --fail --silent --show-error \
             -H "Content-Type: application/json" \
             -d '{"ftype":"bandpass","method":"biquad","fs":48000,"f0":1000,"Q":5,"order":2}' \
-            http://127.0.0.1:5000/api/design > /tmp/iir-design.json
+            "$APP_URL/api/design" > /tmp/iir-design.json
 
           python - <<'PY'
           import json
@@ -77,5 +86,23 @@ jobs:
           assert len(data["a"]) == 3
           assert len(data["response"]["frequency_hz"]) == 1024
           assert len(data["response"]["magnitude_db"]) == 1024
+          Path("/tmp/iir-infer-payload.json").write_text(
+              json.dumps({"b": data["b"], "a": data["a"], "fs": 48000})
+          )
+          PY
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/iir-infer-payload.json \
+            "$APP_URL/api/infer" > /tmp/iir-infer.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("/tmp/iir-infer.json").read_text())
           assert data["inferred"]["ftype"] == "bandpass"
+          assert data["inferred"]["order"] == 2
+          assert len(data["response"]["frequency_hz"]) == 1024
+          assert len(data["response"]["magnitude_db"]) == 1024
           PY
