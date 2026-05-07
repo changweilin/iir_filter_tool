@@ -444,12 +444,15 @@ label span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 input,
 select,
 textarea {
   width: 100%;
+  min-width: 0;
   min-height: 40px;
   border: 1px solid var(--control-border);
   border-radius: 6px;
@@ -637,8 +640,24 @@ canvas {
 @media (max-width: 560px) {
   .form-grid,
   .coeff-columns,
+  .infer-grid,
   .summary-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 10px;
+  }
+
+  .shell {
+    gap: 14px;
+    padding-inline: 12px;
+  }
+
+  .controls-panel,
+  .infer-panel,
+  .coefficients-panel,
+  .inferred-panel,
+  .chart-panel,
+  .inference-response-panel {
+    padding: 14px;
   }
 
   .section-title {
