@@ -46,6 +46,7 @@
           <h2 id="design-heading">Design Parameters</h2>
           <div class="button-group" aria-label="Design parameter actions">
             <button id="paste-design-json" class="ghost-button" type="button">Paste JSON</button>
+            <button id="reset-design" class="ghost-button" type="button">Reset</button>
             <button id="design-submit" class="primary-button" type="button">Run Design</button>
           </div>
         </div>
@@ -81,7 +82,7 @@
           </label>
           <label>
             <span>Q</span>
-            <input name="Q" type="number" min="0.0001" step="0.1" value="5">
+            <input name="Q" type="number" min="0.0001" step="any" value="0.7071067811865476">
           </label>
           <label>
             <span>Order</span>
@@ -169,11 +170,14 @@
               </label>
             </fieldset>
           </div>
+          <div class="button-group" aria-label="Inference coefficient actions">
+            <button id="reset-inference" class="ghost-button" type="button">Reset</button>
+          </div>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
             <span id="inference-coeff-label">Coefficient text (b0,b1,b2,a0,a1,a2)</span>
-            <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]</textarea>
+            <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.08449720532662121, 0.0, -0.08449720532662121, 1.0, -1.815341082704568, 0.8310055893467576]</textarea>
           </label>
           <label>
             <span>Sample Rate (Hz)</span>

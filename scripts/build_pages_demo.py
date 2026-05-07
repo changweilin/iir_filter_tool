@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import shutil
 import sys
 from pathlib import Path
@@ -14,12 +15,13 @@ sys.path.insert(0, str(REPO_ROOT))
 from iir_filter import design_iir
 
 RESPONSE_POINTS = 1024
+DEFAULT_Q = math.sqrt(0.5)
 DEFAULT_DESIGN_PARAMS = {
     "ftype": "bandpass",
     "method": "biquad",
     "fs": 48000,
     "f0": 1000,
-    "Q": 5,
+    "Q": DEFAULT_Q,
     "order": 2,
     "rp": None,
     "rs": None,
@@ -105,6 +107,7 @@ def _render_html():
           <h2 id="design-heading">Design Parameters</h2>
           <div class="button-group" aria-label="Design parameter actions">
             <button id="paste-design-json" class="ghost-button" type="button">Paste JSON</button>
+            <button id="reset-design" class="ghost-button" type="button">Reset</button>
           </div>
         </div>
 
@@ -139,7 +142,7 @@ def _render_html():
           </label>
           <label>
             <span>Q</span>
-            <input name="Q" type="number" min="0.0001" step="0.1" value="5">
+            <input name="Q" type="number" min="0.0001" step="any" value="{DEFAULT_DESIGN_PARAMS['Q']}">
           </label>
           <label>
             <span>Order</span>
@@ -227,11 +230,14 @@ def _render_html():
               </label>
             </fieldset>
           </div>
+          <div class="button-group" aria-label="Inference coefficient actions">
+            <button id="reset-inference" class="ghost-button" type="button">Reset</button>
+          </div>
         </div>
         <form id="infer-form" class="infer-grid">
           <label>
             <span id="inference-coeff-label">Coefficient text (b0,b1,b2,a0,a1,a2)</span>
-            <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]</textarea>
+            <textarea name="coefficients" rows="6" placeholder="b0,b1,b2,a0,a1,a2">[0.08449720532662121, 0.0, -0.08449720532662121, 1.0, -1.815341082704568, 0.8310055893467576]</textarea>
           </label>
           <label>
             <span>Sample Rate (Hz)</span>

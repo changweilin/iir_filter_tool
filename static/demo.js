@@ -3,34 +3,36 @@ const DEFAULT_DESIGN_PARAMS = {
   method: "biquad",
   fs: 48000,
   f0: 1000,
-  Q: 5,
+  Q: 0.7071067811865476,
   order: 2,
   rp: null,
   rs: null,
 };
 
-const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v2";
+const FORM_STORAGE_KEY = "iir-filter-tool:form-state:v3";
 const THEME_STORAGE_KEY = "iir-filter-tool:theme";
 const THEME_MODES = new Set(["day", "night"]);
 const COEFFICIENT_MODE_NAMES = {
   design: "design-coefficient-mode",
   inference: "inference-coefficient-mode",
 };
+const DEFAULT_RESPONSE_POINTS = "1024";
+const DEFAULT_INFERENCE_MODE = "tf";
 const INFERENCE_MODE_DETAILS = {
   tf: {
     label: "Coefficient text (b0,b1,b2,a0,a1,a2)",
     placeholder: "b0,b1,b2,a0,a1,a2",
-    sample: "[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]",
+    sample: "[0.08449720532662121, 0.0, -0.08449720532662121, 1.0, -1.815341082704568, 0.8310055893467576]",
   },
   sos: {
     label: "Second-order sections (JSON rows)",
     placeholder: "[[b0,b1,b2,a0,a1,a2]]",
-    sample: "[[0.01276221, 0, -0.01276221, 1, -1.95676142, 0.97447558]]",
+    sample: "[[0.08449720532662121, 0.0, -0.08449720532662121, 1.0, -1.8153410827045682, 0.8310055893467578]]",
   },
   zpk: {
     label: "Zeros / poles / gain (JSON)",
-    placeholder: '{"z":[1,-1],"p":[{"real":0.97838071,"imag":0.13132694},{"real":0.97838071,"imag":-0.13132694}],"k":0.01276221}',
-    sample: '{"z":[1,-1],"p":[{"real":0.97838071,"imag":0.13132694},{"real":0.97838071,"imag":-0.13132694}],"k":0.01276221}',
+    placeholder: '{"z":[-1,1],"p":[{"real":0.9076705413522841,"imag":0.0844972053266221},{"real":0.9076705413522841,"imag":-0.0844972053266221}],"k":0.08449720532662121}',
+    sample: '{"z":[-1,1],"p":[{"real":0.9076705413522841,"imag":0.0844972053266221},{"real":0.9076705413522841,"imag":-0.0844972053266221}],"k":0.08449720532662121}',
   },
 };
 
@@ -535,16 +537,14 @@ function coefficientInputText(mode, coefficients) {
 
 function updateInferenceModeUi(useCurrentCoefficients = false) {
   const mode = selectedInferenceCoefficientMode();
-  const details = INFERENCE_MODE_DETAILS[mode];
   const previousDetails = INFERENCE_MODE_DETAILS[lastInferenceMode];
   const currentText = inferenceCoeffTextarea.value.trim();
-  inferenceCoeffLabel.textContent = details.label;
-  inferenceCoeffTextarea.placeholder = details.placeholder;
+  applyInferenceModeDetails(mode);
 
   if (useCurrentCoefficients && demoState.inferenceCoefficients?.[mode]) {
     inferenceCoeffTextarea.value = coefficientInputText(mode, demoState.inferenceCoefficients);
   } else if (!currentText || currentText === previousDetails.sample) {
-    inferenceCoeffTextarea.value = details.sample;
+    inferenceCoeffTextarea.value = INFERENCE_MODE_DETAILS[mode].sample;
   }
   lastInferenceMode = mode;
 }
@@ -567,7 +567,7 @@ function renderSummary(inferred) {
 function setFormValues(params) {
   ["ftype", "method", "fs", "f0", "Q", "order", "rp", "rs"].forEach((field) => {
     if (designForm.elements[field]) {
-      designForm.elements[field].value = formatNumber(params[field]);
+      designForm.elements[field].value = params[field] == null ? "" : String(params[field]);
     }
   });
 }
@@ -581,6 +581,18 @@ function setControlValue(control, value, field) {
     }
   }
   control.value = displayValue;
+}
+
+function setRadioValue(name, value) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach((control) => {
+    control.checked = control.value === value;
+  });
+}
+
+function applyInferenceModeDetails(mode) {
+  const details = INFERENCE_MODE_DETAILS[mode];
+  inferenceCoeffLabel.textContent = details.label;
+  inferenceCoeffTextarea.placeholder = details.placeholder;
 }
 
 function persistentControls() {
@@ -1043,6 +1055,27 @@ async function pasteDesignJson() {
   }
 }
 
+function resetDesign() {
+  clearTimeout(autoDesignTimer);
+  setFormValues(DEFAULT_DESIGN_PARAMS);
+  designResponsePointsInput.value = DEFAULT_RESPONSE_POINTS;
+  applyMethodDefaults();
+  persistControlValues();
+  scheduleAutoDesign();
+}
+
+function resetInference() {
+  clearTimeout(autoInferTimer);
+  setRadioValue(COEFFICIENT_MODE_NAMES.inference, DEFAULT_INFERENCE_MODE);
+  applyInferenceModeDetails(DEFAULT_INFERENCE_MODE);
+  inferenceCoeffTextarea.value = INFERENCE_MODE_DETAILS[DEFAULT_INFERENCE_MODE].sample;
+  inferForm.elements.fs.value = String(DEFAULT_DESIGN_PARAMS.fs);
+  inferenceResponsePointsInput.value = DEFAULT_RESPONSE_POINTS;
+  lastInferenceMode = DEFAULT_INFERENCE_MODE;
+  persistControlValues();
+  scheduleAutoInfer();
+}
+
 function cssColor(name, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
@@ -1109,14 +1142,15 @@ function drawChart(canvas, response) {
     ctx.fillText(`${value.toFixed(0)} dB`, 10, y + 4);
   }
 
-  for (let i = 0; i <= 4; i += 1) {
-    const x = padding.left + (plotWidth * i) / 4;
-    const value = minX + ((maxX - minX) * i) / 4;
+  const xTickCount = plotWidth < 300 ? 2 : 4;
+  for (let i = 0; i <= xTickCount; i += 1) {
+    const x = padding.left + (plotWidth * i) / xTickCount;
+    const value = minX + ((maxX - minX) * i) / xTickCount;
     ctx.beginPath();
     ctx.moveTo(x, padding.top);
     ctx.lineTo(x, height - padding.bottom);
     ctx.stroke();
-    ctx.textAlign = i === 0 ? "left" : i === 4 ? "right" : "center";
+    ctx.textAlign = i === 0 ? "left" : i === xTickCount ? "right" : "center";
     ctx.fillText(`${Math.round(value)} Hz`, x, height - 16);
   }
   ctx.textAlign = "left";
@@ -1196,6 +1230,8 @@ document.querySelector("#copy-inferred-json").addEventListener("click", async ()
 });
 
 document.querySelector("#paste-design-json").addEventListener("click", pasteDesignJson);
+document.querySelector("#reset-design").addEventListener("click", resetDesign);
+document.querySelector("#reset-inference").addEventListener("click", resetInference);
 
 designResponsePointsInput.addEventListener("input", () => {
   persistControlValues();
