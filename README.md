@@ -91,6 +91,16 @@ make web
 make pages-demo
 ```
 
+### 輸入參數並取得曲線
+
+電腦版：
+
+![IIR Filter Tool 電腦版輸入參數與曲線](docs/images/web-ui-desktop.png)
+
+手機版：
+
+![IIR Filter Tool 手機版輸入參數與曲線](docs/images/web-ui-mobile.png)
+
 ## JSON API
 
 ### `POST /api/design`
