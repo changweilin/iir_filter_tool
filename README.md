@@ -1,48 +1,115 @@
-# IIR Filter Tool
+﻿# IIR Filter Tool
 
-IIR Filter Tool 是一個用 Python 建立的數位 IIR 濾波器設計與分析工具。它可以透過 Python API、Flask Web UI、JSON API，以及可部署到 GitHub Pages 的靜態 demo 來設計濾波器、檢視頻率響應，並從既有係數推估濾波器參數。
+## 1) 專案標題與簡介 (Title & Description)
 
-## 功能
+**IIR Filter Tool** 是一個以 Python 撰寫的 IIR 濾波器工具箱，提供：
 
-- 支援 `lowpass`、`highpass`、`bandpass`、`notch` 濾波器類型。
-- 支援 RBJ `biquad`，以及 SciPy 提供的 `butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel` 設計方法。
-- 可從 `b` / `a` 傳遞函數係數推估濾波器類型、中心或截止頻率、Q 值、階數、漣波、阻帶衰減與極零點。
-- Web UI 可輸入設計參數、顯示係數、繪製 magnitude response，並從係數進行推估。
-- JSON API 適合接到其他工具或前端。
-- 靜態 demo 可建置到 `site/`，並透過 GitHub Pages 發布。
+- 可重複使用的濾波器係數設計函式（`design_iir`）
+- 係數反推/解析資訊的分析函式（`infer_iir_params`）
+- 幅度響應視覺化與快速驗證
+- Flask Web UI（支援設計與反推）
+- JSON API（`/api/design`、`/api/infer`）
+- 可離線瀏覽的 GitHub Pages 靜態 Demo 產生流程
 
-## 安裝
+此專案定位為：
+- 研究/教學可用的 IIR 濾波器設計範本
+- 小型工具型專案（可直接用於實驗、驗證與導入到其他系統）
 
-建議使用虛擬環境：
+---
+
+## 2) 核心功能特性 (Features)
+
+### 核心演算法
+- 支援 `ftype`：`lowpass`、`highpass`、`bandpass`、`notch`
+- 設計方法（`method`）
+  - `biquad`（RBJ biquad，僅限 `order=2`）
+  - `butterworth`
+  - `cheby1`
+  - `cheby2`
+  - `elliptic`
+  - `bessel`
+- 參數驗證與錯誤訊息友善：不合法欄位與範圍會明確回傳 400（API）或 `ValueError`（Python API）
+
+### Python API
+- `design_iir(params, fs=None)`：依參數產生 IIR 係數 (`b`, `a`)
+- `infer_iir_params(b, a, fs)`：從係數推估 `ftype`、`f0`、`Q`、`method`、`order` 等 metadata
+- `plot_response(b, a, fs, title)`：繪製幅度響應（Matplotlib）
+
+### Web 介面與互動
+- Flask 路由：
+  - `GET /`：載入 Web UI
+  - `POST /api/design`：回傳設計係數與頻率響應
+  - `POST /api/infer`：輸入係數後回傳推估參數與頻率響應
+- 支援三種係數輸入/輸出表示法
+  - Transfer Function（`tf`）：`b`, `a`
+  - Second-Order Section（`sos`）
+  - Zero-Pole-Gain（`zpk`）
+- 可調 `response_points`（2 ~ 65536）控制頻率取樣點數
+- 回傳資料皆作 JSON-safe 格式處理（含複數欄位會輸出 `{"real", "imag"}`）
+
+### GitHub Pages 靜態 Demo
+- 透過 `scripts/build_pages_demo.py` 將主應用資料編譯為可部署靜態 `site/`
+- 支援主題切換、響應式版面、係數複製／貼上、即時預覽波特圖
+
+### 驗證與流程
+- 包含 Python 單元測試：`tests/`
+- CI 工作流程：
+  - `Python and web tests`（`.github/workflows/ci.yml`）
+  - `Pages`（`.github/workflows/pages.yml`）會建置並檢查靜態 demo
+
+---
+
+## 3) 系統需求與安裝步驟 (Prerequisites & Installation)
+
+### 系統需求
+- Python 3.8+（建議與 CI 一致：3.12）
+- pip
+- Windows / macOS / Linux 任一支援環境
+
+### 建議安裝流程（PowerShell）
 
 ```powershell
+# 建立虛擬環境
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+# 安裝相依套件
 python -m pip install -r requirements.txt
 ```
 
-如果系統的 `python` 不在 `PATH`，Windows 也可以使用 Python launcher：
+或直接用 `py`：
 
 ```powershell
 py -m pip install -r requirements.txt
 ```
 
-專案依賴列在 [requirements.txt](requirements.txt)：
+### 安裝流程（Bash）
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+### 安裝套件
+`requirements.txt` 目前包含：
 
 - `numpy`
 - `scipy`
 - `matplotlib`
 - `flask`
 
-## Python API
+---
 
-執行範例：
+## 4) 快速上手與使用範例 (Quick Start / Usage)
+
+### 4.1 直接執行範例腳本
 
 ```bash
 python example.py
 ```
 
-基本用法：
+### 4.2 使用 Python API
 
 ```python
 from iir_filter import design_iir, infer_iir_params, plot_response
@@ -66,172 +133,131 @@ print(inferred)
 plot_response(b, a, fs=fs, title="Bandpass response")
 ```
 
-## Web UI
-
-啟動 Flask Web App：
+### 4.3 啟動 Flask Web UI
 
 ```bash
+# 預設嘗試 5000，再嘗試 5001
 python web_app.py
 ```
 
-開啟 [http://127.0.0.1:5000](http://127.0.0.1:5000)。如果 `5000` 已被佔用，程式會嘗試使用 `5001`。
-
-也可以指定連接埠：
+指定 PORT：
 
 ```powershell
 $env:PORT = "5050"
 python web_app.py
 ```
 
-Makefile 提供幾個常用入口：
+### 4.4 呼叫 JSON API
+
+#### POST `/api/design`
 
 ```bash
-make run
-make web
-make pages-demo
+curl -X POST http://127.0.0.1:5000/api/design \
+  -H "Content-Type: application/json" \
+  -d '{"ftype":"bandpass","method":"biquad","fs":48000,"f0":1000,"Q":5,"order":2}'
 ```
 
-### 輸入參數並取得曲線
+回傳包含：
+- `b`, `a`
+- `coefficients`（`tf`, `sos`, `zpk`）
+- `response.frequency_hz`, `response.magnitude_db`
 
-電腦版：
+#### POST `/api/infer`
 
-![IIR Filter Tool 電腦版輸入參數與曲線](docs/images/web-ui-desktop.png)
-
-手機版：
-
-參數輸入：
-
-![IIR Filter Tool 手機版參數輸入](docs/images/web-ui-mobile-parameters.png)
-
-係數輸出：
-
-![IIR Filter Tool 手機版係數輸出](docs/images/web-ui-mobile-coefficients.png)
-
-曲線顯示：
-
-![IIR Filter Tool 手機版曲線顯示](docs/images/web-ui-mobile-response.png)
-
-## JSON API
-
-### `POST /api/design`
-
-依參數設計濾波器，回傳係數與頻率響應。
-
-Request:
-
-```json
-{
-  "ftype": "bandpass",
-  "method": "biquad",
-  "fs": 48000,
-  "f0": 1000,
-  "Q": 5,
-  "order": 2,
-  "rp": null,
-  "rs": null
-}
+```bash
+curl -X POST http://127.0.0.1:5000/api/infer \
+  -H "Content-Type: application/json" \
+  -d '{"b":[0.0127622136,0,-0.0127622136],"a":[1.0,-1.81534108,0.83100559],"fs":48000}'
 ```
 
-Response:
+回傳包含：
+- `inferred.ftype`, `inferred.f0`, `inferred.Q`, `inferred.order`, `inferred.designable`
+- `response.frequency_hz`, `response.magnitude_db`
 
-```json
-{
-  "b": [0.0127622136, 0.0, -0.0127622136],
-  "a": [1.0, -1.9567614225, 0.9744755728],
-  "response": {
-    "frequency_hz": [0.0, 23.4375],
-    "magnitude_db": [-320.0, -32.4]
-  }
-}
-```
-
-`response.frequency_hz` 與 `response.magnitude_db` 實際會各回傳 1024 個點。
-
-### `POST /api/infer`
-
-從既有 `b` / `a` 係數推估濾波器參數，並回傳該係數的頻率響應。
-
-Request:
-
-```json
-{
-  "b": [0.01276221, 0, -0.01276221],
-  "a": [1, -1.95676142, 0.97447558],
-  "fs": 48000
-}
-```
-
-Response 會包含：
-
-- `inferred`: 推估出的描述性參數。
-- `response.frequency_hz`: 頻率軸資料。
-- `response.magnitude_db`: magnitude response，以 dB 表示。
-
-## 參數說明
-
-- `fs`: 取樣率，單位 Hz，預設為 `48000`。
-- `f0`: cutoff 或 center frequency，必須大於 0 且低於 Nyquist frequency，也就是 `fs / 2`。
-- `Q`: bandpass、notch 與 RBJ biquad 會使用的品質因數。SciPy-backed 的 bandpass/notch 會用 `Q` 推算頻帶邊界。
-- `order`: 濾波器階數。RBJ `biquad` 必須使用 `order=2`。
-- `rp`: Chebyshev I 與 Elliptic 的 passband ripple，單位 dB。
-- `rs`: Chebyshev II 與 Elliptic 的 stopband attenuation，單位 dB。
-- `norm`: Bessel 設計可使用 `phase`、`delay` 或 `mag`，預設為 `phase`。
-
-## 支援的設計方法
-
-| Method | 說明 | 必要參數 |
-| --- | --- | --- |
-| `biquad` | RBJ biquad 設計 | `ftype`, `f0`, `Q`, `order=2` |
-| `butterworth` | SciPy Butterworth | `ftype`, `f0`, `order` |
-| `cheby1` | SciPy Chebyshev I | `ftype`, `f0`, `order`, `rp` |
-| `cheby2` | SciPy Chebyshev II | `ftype`, `f0`, `order`, `rs` |
-| `elliptic` | SciPy Elliptic | `ftype`, `f0`, `order`, `rp`, `rs` |
-| `bessel` | SciPy Bessel | `ftype`, `f0`, `order`, optional `norm` |
-
-`butter` 是 `butterworth` 的別名，`ellip` 是 `elliptic` 的別名，`bandstop` 會被視為 `notch`。
-
-## GitHub Pages 靜態 Demo
-
-GitHub Pages 不能直接執行 Flask server，因此專案提供靜態 demo 建置腳本。它會把 CSS、demo JavaScript、預先計算的範例資料，以及必要的 Python 設計與推估邏輯輸出到 `site/`。
+### 4.5 建置並預覽 GitHub Pages 靜態 Demo
 
 ```bash
 python scripts/build_pages_demo.py --output site
 ```
 
-本 repo 已包含 `.github/workflows/pages.yml`。推送到 `main` 或 `master` 時，workflow 會安裝依賴、執行測試、建置 `site/`，再部署到 GitHub Pages。
+執行後可用靜態伺服器預覽：
 
-## 測試
+```bash
+python -m http.server --directory site 8080
+```
+
+在瀏覽器開啟 `http://127.0.0.1:8080`。
+
+### 4.6 執行測試
 
 ```bash
 python -m unittest discover -s tests
 ```
 
-測試涵蓋：
+---
 
-- IIR 設計與參數驗證。
-- RBJ biquad 係數反推。
-- SciPy-backed 濾波器分析 metadata。
-- Flask JSON API。
-- GitHub Pages 靜態 demo 建置結果。
-
-## 專案結構
+## 5) 專案架構說明 (Project Structure)
 
 ```text
-iir_filter/
-  design.py      # IIR filter design
-  infer.py       # coefficient analysis and parameter inference
-  plot.py        # Matplotlib response plotting
-example.py       # Python API example
-web_app.py       # Flask Web UI and JSON API
-scripts/         # GitHub Pages static demo builder
-templates/       # Flask HTML template
-static/          # CSS and browser JavaScript
-tests/           # unit tests
-site/            # generated static demo output
+iir_filter_tool/
+├─ iir_filter/                  # Python 核心套件
+│  ├─ __init__.py              # 匯出主要 API
+│  ├─ design.py                # filter 設計邏輯（design_iir）
+│  ├─ infer.py                 # 係數推估/解析（infer_iir_params）
+│  └─ plot.py                  # 頻率響應繪圖（plot_response）
+├─ web_app.py                   # Flask Web UI 與 JSON API
+├─ example.py                   # CLI 示例
+├─ scripts/
+│  └─ build_pages_demo.py       # 產生 GitHub Pages 靜態 demo
+├─ templates/
+│  └─ index.html                # Flask HTML 模板
+├─ static/
+│  ├─ styles.css                # UI 樣式（含深淺色主題、RWD）
+│  ├─ app.js                    # 前端邏輯（設計/推估/係數轉換/圖表）
+│  └─ demo.js                   # 靜態 demo 專用前端邏輯
+├─ tests/
+│  ├─ test_iir_filter.py
+│  ├─ test_web_app.py
+│  └─ test_pages_demo.py
+├─ docs/images/                 # README/展示截圖資源
+├─ .github/workflows/
+│  ├─ ci.yml                    # CI 測試與 Flask smoke test
+│  └─ pages.yml                 # GitHub Pages build/deploy
+├─ requirements.txt             # 相依套件
+├─ Makefile                     # 便捷指令
+└─ .gitignore
 ```
 
-## 注意事項
+### Makefile 常用指令
 
-- `infer_iir_params` 是 best-effort 分析工具。RBJ biquad 通常可以精準回推；SciPy prototype 濾波器多半只回傳 analysis-only metadata。
-- `notch` 在 SciPy-backed 設計路徑中會映射為 `bandstop`。
-- Web API 的數值輸出會轉成 JSON-safe 格式，非有限浮點值會轉成 `null`。
+```bash
+make run         # 執行 example.py
+make web         # 執行 web_app.py
+make pages-demo  # 產生 site/ 靜態 demo
+```
+
+---
+
+## 6) 授權條款 (License)
+
+本專案採用 **MIT License**，授權條件如下：
+
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
