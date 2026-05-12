@@ -1,97 +1,57 @@
-﻿# IIR Filter Tool
+﻿# IIR Filter Tool (IIR 濾波器工具)
 
-## 1) 專案標題與簡介 (Title & Description)
+## 1) 專案標案與簡介 / Title & Description
 
-**IIR Filter Tool** 是一個以 Python 撰寫的 IIR 濾波器工具箱，提供：
+**中文**
 
-- 可重複使用的濾波器係數設計函式（`design_iir`）
-- 係數反推/解析資訊的分析函式（`infer_iir_params`）
-- 幅度響應視覺化與快速驗證
-- Flask Web UI（支援設計與反推）
-- JSON API（`/api/design`、`/api/infer`）
-- 可離線瀏覽的 GitHub Pages 靜態 Demo 產生流程
+`IIR Filter Tool` 是一個 Python 專案，提供 IIR 濾波器的設計、係數反推分析、回應繪圖與 Web 介面/JSON API 服務。你可以使用 RBJ biquad 或 SciPy 的常見設計方法（Butterworth、Chebyshev、Elliptic、Bessel）產生 IIR 係數，並用 API 將結果與幅度響應輸出給前端/腳本使用。
 
-此專案定位為：
-- 研究/教學可用的 IIR 濾波器設計範本
-- 小型工具型專案（可直接用於實驗、驗證與導入到其他系統）
+**English**
+
+`IIR Filter Tool` is a Python project for IIR filter design, coefficient inference, response plotting, and serving results through a Flask web UI and JSON API. It supports RBJ biquad and common SciPy-based designs (Butterworth, Chebyshev, Elliptic, Bessel), and provides coefficients plus frequency-response data for downstream scripts or clients.
 
 ---
 
-## 2) 核心功能特性 (Features)
+## 2) 核心功能特性 / Features
 
-### 核心演算法
-- 支援 `ftype`：`lowpass`、`highpass`、`bandpass`、`notch`
-- 設計方法（`method`）
-  - `biquad`（RBJ biquad，僅限 `order=2`）
-  - `butterworth`
-  - `cheby1`
-  - `cheby2`
-  - `elliptic`
-  - `bessel`
-- 參數驗證與錯誤訊息友善：不合法欄位與範圍會明確回傳 400（API）或 `ValueError`（Python API）
+**中文**
 
-### Python API
-- `design_iir(params, fs=None)`：依參數產生 IIR 係數 (`b`, `a`)
-- `infer_iir_params(b, a, fs)`：從係數推估 `ftype`、`f0`、`Q`、`method`、`order` 等 metadata
-- `plot_response(b, a, fs, title)`：繪製幅度響應（Matplotlib）
+- 設計類型：`lowpass`、`highpass`、`bandpass`、`notch`
+- 設計方法：`biquad`（RBJ）與 SciPy 後端 `butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel`
+- 支援參數驗證與錯誤回報（錯誤參數會回傳清楚訊息）
+- Python API：`design_iir` / `infer_iir_params` / `plot_response`
+- Web UI：可即時設計與繪圖、複製係數、主題切換、RWD 介面
+- JSON API：
+  - `POST /api/design`
+  - `POST /api/infer`
+- 靜態 Demo：可產生可部署到 GitHub Pages 的 `site/`
+- 測試完整：核心邏輯、API、靜態 Demo 都有測試覆蓋
 
-### Web 介面與互動
-- Flask 路由：
-  - `GET /`：載入 Web UI
-  - `POST /api/design`：回傳設計係數與頻率響應
-  - `POST /api/infer`：輸入係數後回傳推估參數與頻率響應
-- 支援三種係數輸入/輸出表示法
-  - Transfer Function（`tf`）：`b`, `a`
-  - Second-Order Section（`sos`）
-  - Zero-Pole-Gain（`zpk`）
-- 可調 `response_points`（2 ~ 65536）控制頻率取樣點數
-- 回傳資料皆作 JSON-safe 格式處理（含複數欄位會輸出 `{"real", "imag"}`）
+**English**
 
-### GitHub Pages 靜態 Demo
-- 透過 `scripts/build_pages_demo.py` 將主應用資料編譯為可部署靜態 `site/`
-- 支援主題切換、響應式版面、係數複製／貼上、即時預覽波特圖
-
-### 驗證與流程
-- 包含 Python 單元測試：`tests/`
-- CI 工作流程：
-  - `Python and web tests`（`.github/workflows/ci.yml`）
-  - `Pages`（`.github/workflows/pages.yml`）會建置並檢查靜態 demo
+- Filter types: `lowpass`, `highpass`, `bandpass`, `notch`
+- Design methods: `biquad` (RBJ) and SciPy-based `butterworth`, `cheby1`, `cheby2`, `elliptic`, `bessel`
+- Input validation and clear error handling (invalid inputs return explicit error messages)
+- Python API: `design_iir`, `infer_iir_params`, `plot_response`
+- Flask web UI for interactive design, plotting, coefficient copy, theme switching, responsive layout
+- JSON API endpoints:
+  - `POST /api/design`
+  - `POST /api/infer`
+- Static demo generation to `site/` for GitHub Pages
+- Tests for core logic, web app routes, and demo generation
 
 ---
 
-## 3) 系統需求與安裝步驟 (Prerequisites & Installation)
+## 3) 系統需求與安裝步驟 / Prerequisites & Installation
+
+**中文**
 
 ### 系統需求
-- Python 3.8+（建議與 CI 一致：3.12）
+- Python 3.8+（建議 3.12）
 - pip
-- Windows / macOS / Linux 任一支援環境
+- Windows / macOS / Linux
 
-### 建議安裝流程（PowerShell）
-
-```powershell
-# 建立虛擬環境
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# 安裝相依套件
-python -m pip install -r requirements.txt
-```
-
-或直接用 `py`：
-
-```powershell
-py -m pip install -r requirements.txt
-```
-
-### 安裝流程（Bash）
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-### 安裝套件
+### 依賴套件
 `requirements.txt` 目前包含：
 
 - `numpy`
@@ -99,11 +59,78 @@ python -m pip install -r requirements.txt
 - `matplotlib`
 - `flask`
 
+### 安裝（PowerShell）
+
+```powershell
+# 建立虛擬環境
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 安裝套件
+python -m pip install -r requirements.txt
+```
+
+或使用 `py`：
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+### Install (Bash)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+**English**
+
+### Requirements
+- Python 3.8+ (Python 3.12 recommended)
+- `pip`
+- Windows / macOS / Linux
+
+### Dependencies
+From `requirements.txt`:
+
+- `numpy`
+- `scipy`
+- `matplotlib`
+- `flask`
+
+### Install (PowerShell)
+
+```powershell
+# Create virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+python -m pip install -r requirements.txt
+```
+
+or with `py`:
+
+```powershell
+py -m pip install -r requirements.txt
+```
+
+### Install (Bash)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 ---
 
-## 4) 快速上手與使用範例 (Quick Start / Usage)
+## 4) 快速上手與使用範例 / Quick Start / Usage
 
-### 4.1 直接執行範例腳本
+**中文**
+
+### 4.1 執行範例腳本
 
 ```bash
 python example.py
@@ -136,11 +163,12 @@ plot_response(b, a, fs=fs, title="Bandpass response")
 ### 4.3 啟動 Flask Web UI
 
 ```bash
-# 預設嘗試 5000，再嘗試 5001
 python web_app.py
 ```
 
-指定 PORT：
+預設會嘗試 `5000`，不可用再退回 `5001`。
+
+指定連接埠：
 
 ```powershell
 $env:PORT = "5050"
@@ -157,10 +185,79 @@ curl -X POST http://127.0.0.1:5000/api/design \
   -d '{"ftype":"bandpass","method":"biquad","fs":48000,"f0":1000,"Q":5,"order":2}'
 ```
 
-回傳包含：
-- `b`, `a`
-- `coefficients`（`tf`, `sos`, `zpk`）
-- `response.frequency_hz`, `response.magnitude_db`
+#### POST `/api/infer`
+
+```bash
+curl -X POST http://127.0.0.1:5000/api/infer \
+  -H "Content-Type: application/json" \
+  -d '{"b":[0.0127622136,0,-0.0127622136],"a":[1.0,-1.81534108,0.83100559],"fs":48000}'
+```
+
+### 4.5 產生 GitHub Pages 靜態 Demo
+
+```bash
+python scripts/build_pages_demo.py --output site
+python -m http.server --directory site 8080
+```
+
+**English**
+
+### 4.1 Run the example script
+
+```bash
+python example.py
+```
+
+### 4.2 Use Python API
+
+```python
+from iir_filter import design_iir, infer_iir_params, plot_response
+
+fs = 48000
+params = {
+    "ftype": "bandpass",
+    "method": "biquad",
+    "f0": 1000,
+    "Q": 5,
+    "order": 2,
+}
+
+b, a = design_iir(params, fs=fs)
+print("b:", b)
+print("a:", a)
+
+inferred = infer_iir_params(b, a, fs)
+print(inferred)
+
+plot_response(b, a, fs=fs, title="Bandpass response")
+```
+
+### 4.3 Run Flask Web UI
+
+```bash
+python web_app.py
+```
+
+By default it tries port `5000`, then falls back to `5001` if needed.
+
+Set a fixed port:
+
+```bash
+export FLASK_APP=web_app: create_app
+# (optional) when running on Windows PowerShell:
+$env:PORT = "5050"
+python web_app.py
+```
+
+### 4.4 Call JSON API
+
+#### POST `/api/design`
+
+```bash
+curl -X POST http://127.0.0.1:5000/api/design \
+  -H "Content-Type: application/json" \
+  -d '{"ftype":"bandpass","method":"biquad","fs":48000,"f0":1000,"Q":5,"order":2}'
+```
 
 #### POST `/api/infer`
 
@@ -170,25 +267,16 @@ curl -X POST http://127.0.0.1:5000/api/infer \
   -d '{"b":[0.0127622136,0,-0.0127622136],"a":[1.0,-1.81534108,0.83100559],"fs":48000}'
 ```
 
-回傳包含：
-- `inferred.ftype`, `inferred.f0`, `inferred.Q`, `inferred.order`, `inferred.designable`
-- `response.frequency_hz`, `response.magnitude_db`
-
-### 4.5 建置並預覽 GitHub Pages 靜態 Demo
+### 4.5 Build and preview static Pages demo
 
 ```bash
 python scripts/build_pages_demo.py --output site
-```
-
-執行後可用靜態伺服器預覽：
-
-```bash
 python -m http.server --directory site 8080
 ```
 
-在瀏覽器開啟 `http://127.0.0.1:8080`。
+Open `http://127.0.0.1:8080` in your browser.
 
-### 4.6 執行測試
+### 4.6 執行測試 / Run tests
 
 ```bash
 python -m unittest discover -s tests
@@ -196,51 +284,62 @@ python -m unittest discover -s tests
 
 ---
 
-## 5) 專案架構說明 (Project Structure)
+## 5) 專案架構說明 / Project Structure
 
 ```text
 iir_filter_tool/
-├─ iir_filter/                  # Python 核心套件
-│  ├─ __init__.py              # 匯出主要 API
-│  ├─ design.py                # filter 設計邏輯（design_iir）
-│  ├─ infer.py                 # 係數推估/解析（infer_iir_params）
-│  └─ plot.py                  # 頻率響應繪圖（plot_response）
-├─ web_app.py                   # Flask Web UI 與 JSON API
-├─ example.py                   # CLI 示例
+├─ iir_filter/
+│  ├─ __init__.py
+│  ├─ design.py
+│  ├─ infer.py
+│  └─ plot.py
+├─ web_app.py
+├─ example.py
 ├─ scripts/
-│  └─ build_pages_demo.py       # 產生 GitHub Pages 靜態 demo
+│  └─ build_pages_demo.py
 ├─ templates/
-│  └─ index.html                # Flask HTML 模板
+│  └─ index.html
 ├─ static/
-│  ├─ styles.css                # UI 樣式（含深淺色主題、RWD）
-│  ├─ app.js                    # 前端邏輯（設計/推估/係數轉換/圖表）
-│  └─ demo.js                   # 靜態 demo 專用前端邏輯
+│  ├─ styles.css
+│  └─ app.js
+│  └─ demo.js
 ├─ tests/
 │  ├─ test_iir_filter.py
 │  ├─ test_web_app.py
 │  └─ test_pages_demo.py
-├─ docs/images/                 # README/展示截圖資源
+├─ docs/images/
 ├─ .github/workflows/
-│  ├─ ci.yml                    # CI 測試與 Flask smoke test
-│  └─ pages.yml                 # GitHub Pages build/deploy
-├─ requirements.txt             # 相依套件
-├─ Makefile                     # 便捷指令
-└─ .gitignore
+│  ├─ ci.yml
+│  └─ pages.yml
+├─ requirements.txt
+├─ Makefile
+└─ README.md
 ```
 
-### Makefile 常用指令
+### Makefile 常用指令 / Makefile shortcuts
 
 ```bash
-make run         # 執行 example.py
-make web         # 執行 web_app.py
-make pages-demo  # 產生 site/ 靜態 demo
+make run        # python3 example.py
+make web        # python3 web_app.py
+make pages-demo # python3 scripts/build_pages_demo.py --output site
 ```
+
+**English**
+
+### Main layout
+
+- `iir_filter/` contains the core algorithm modules.
+- `web_app.py` exposes Flask UI and API endpoints.
+- `scripts/build_pages_demo.py` generates static output for GitHub Pages.
+- `templates/` and `static/` contain the web UI.
+- `tests/` includes unit tests for filter logic, web API, and demo generation.
+- `.github/workflows/` contains CI and Pages pipelines.
 
 ---
 
-## 6) 授權條款 (License)
+## 6) 授權條款 / License
 
-本專案採用 **MIT License**，授權條件如下：
+本專案採用 **MIT License**。
 
 Copyright (c) 2026
 
