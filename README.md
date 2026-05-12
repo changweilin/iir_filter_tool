@@ -99,7 +99,17 @@ make pages-demo
 
 手機版：
 
-![IIR Filter Tool 手機版輸入參數與曲線](docs/images/web-ui-mobile.png)
+參數輸入：
+
+![IIR Filter Tool 手機版參數輸入](docs/images/web-ui-mobile-parameters.png)
+
+係數輸出：
+
+![IIR Filter Tool 手機版係數輸出](docs/images/web-ui-mobile-coefficients.png)
+
+曲線顯示：
+
+![IIR Filter Tool 手機版曲線顯示](docs/images/web-ui-mobile-response.png)
 
 ## JSON API
 
