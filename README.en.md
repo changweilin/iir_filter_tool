@@ -1,61 +1,61 @@
-﻿# IIR Filter Tool (IIR 濾波器工具)
+﻿# IIR Filter Tool
 
-英文版本請見：[README.en.md](README.en.md)
+For a Chinese version, see [README.md](README.md).
 
-## 1) 專案標案與簡介
+## 1) Title & Description
 
-`IIR Filter Tool` 是一個 Python 專案，提供 IIR 濾波器的設計、係數反推分析、回應繪圖與 Web 介面/JSON API 服務。你可以使用 RBJ biquad 或 SciPy 的常見設計方法（Butterworth、Chebyshev、Elliptic、Bessel）產生 IIR 係數，並用 API 將結果與幅度響應輸出給前端/腳本使用。
+`IIR Filter Tool` is a Python project for IIR filter design, coefficient inference, response plotting, and serving results through a Flask web UI and JSON API. It supports RBJ biquad and common SciPy-based designs (Butterworth, Chebyshev, Elliptic, Bessel), and provides coefficients plus frequency-response data for downstream scripts or clients.
 
 ---
 
-## 2) 核心功能特性
+## 2) Features
 
-- 設計類型：`lowpass`、`highpass`、`bandpass`、`notch`
-- 設計方法：`biquad`（RBJ）與 SciPy 後端 `butterworth`、`cheby1`、`cheby2`、`elliptic`、`bessel`
-- 支援參數驗證與錯誤回報（錯誤參數會回傳清楚訊息）
-- Python API：`design_iir` / `infer_iir_params` / `plot_response`
-- Web UI：可即時設計與繪圖、複製係數、主題切換、RWD 介面
-- JSON API：
+- Filter types: `lowpass`, `highpass`, `bandpass`, `notch`
+- Design methods: `biquad` (RBJ) and SciPy-based `butterworth`, `cheby1`, `cheby2`, `elliptic`, `bessel`
+- Input validation and clear error handling (invalid inputs return explicit error messages)
+- Python API: `design_iir`, `infer_iir_params`, `plot_response`
+- Flask web UI for interactive design, plotting, coefficient copy, theme switching, responsive layout
+- JSON API endpoints:
   - `POST /api/design`
   - `POST /api/infer`
-- 靜態 Demo：可產生可部署到 GitHub Pages 的 `site/`
-- 測試完整：核心邏輯、API、靜態 Demo 都有測試覆蓋
+- Static demo generation to `site/` for GitHub Pages
+- Tests for core logic, web app routes, and demo generation
 
 ---
 
-## 3) 系統需求與安裝步驟
+## 3) Prerequisites & Installation
 
-### 系統需求
-- Python 3.8+（建議 3.12）
-- pip
+### Requirements
+- Python 3.8+ (Python 3.12 recommended)
+- `pip`
 - Windows / macOS / Linux
 
-### 依賴套件
-`requirements.txt` 目前包含：
+### Dependencies
+From `requirements.txt`:
 
 - `numpy`
 - `scipy`
 - `matplotlib`
 - `flask`
 
-### 安裝（PowerShell）
+### Install (PowerShell)
 
 ```powershell
-# 建立虛擬環境
+# Create virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# 安裝套件
+# Install dependencies
 python -m pip install -r requirements.txt
 ```
 
-或使用 `py`：
+or with `py`:
 
 ```powershell
 py -m pip install -r requirements.txt
 ```
 
-### 安裝（Bash）
+### Install (Bash)
 
 ```bash
 python -m venv .venv
@@ -65,15 +65,15 @@ python -m pip install -r requirements.txt
 
 ---
 
-## 4) 快速上手與使用範例
+## 4) Quick Start / Usage
 
-### 4.1 執行範例腳本
+### 4.1 Run the example script
 
 ```bash
 python example.py
 ```
 
-### 4.2 使用 Python API
+### 4.2 Use Python API
 
 ```python
 from iir_filter import design_iir, infer_iir_params, plot_response
@@ -97,22 +97,22 @@ print(inferred)
 plot_response(b, a, fs=fs, title="Bandpass response")
 ```
 
-### 4.3 啟動 Flask Web UI
+### 4.3 Run Flask Web UI
 
 ```bash
 python web_app.py
 ```
 
-預設會嘗試 `5000`，不可用再退回 `5001`。
+By default, it tries port `5000`, then falls back to `5001` if needed.
 
-指定連接埠：
+Specify fixed port:
 
 ```powershell
 $env:PORT = "5050"
 python web_app.py
 ```
 
-### 4.4 呼叫 JSON API
+### 4.4 Call JSON API
 
 #### POST `/api/design`
 
@@ -130,14 +130,16 @@ curl -X POST http://127.0.0.1:5000/api/infer \
   -d '{"b":[0.0127622136,0,-0.0127622136],"a":[1.0,-1.81534108,0.83100559],"fs":48000}'
 ```
 
-### 4.5 產生 GitHub Pages 靜態 Demo
+### 4.5 Build and preview GitHub Pages demo
 
 ```bash
 python scripts/build_pages_demo.py --output site
 python -m http.server --directory site 8080
 ```
 
-### 4.6 執行測試
+Open `http://127.0.0.1:8080` in your browser.
+
+### 4.6 Run tests
 
 ```bash
 python -m unittest discover -s tests
@@ -145,7 +147,7 @@ python -m unittest discover -s tests
 
 ---
 
-## 5) 專案架構說明
+## 5) Project Structure
 
 ```text
 iir_filter_tool/
@@ -178,7 +180,7 @@ iir_filter_tool/
 ├─ README.en.md
 ```
 
-### Makefile 常用指令
+### Makefile shortcuts
 
 ```bash
 make run        # python3 example.py
@@ -188,9 +190,9 @@ make pages-demo # python3 scripts/build_pages_demo.py --output site
 
 ---
 
-## 6) 授權條款
+## 6) License
 
-本專案採用 **MIT License**。
+This project is licensed under the **MIT License**.
 
 Copyright (c) 2026
 
